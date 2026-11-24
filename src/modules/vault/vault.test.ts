@@ -127,6 +127,10 @@ describe('mobile UI & quick capture', () => {
     expect(cells[0].getAttribute('data-label')).toBe('العنصر');
     expect(cells[1].getAttribute('data-label')).toBe('الكمية');
     expect(cells[2].getAttribute('data-label')).toBe('ملاحظة');
+    expect(document.body.classList.contains('idea-modal-open')).toBe(true);
+    expect(document.querySelector('#dlg [data-head-action="discuss"]')).not.toBeNull();
+    expect(document.querySelector('#dlg [data-head-action="export-md"]')).not.toBeNull();
+    expect(document.querySelector('#dlg [data-tab-id="plan"]')?.textContent).toContain('الخطة');
   });
 
   it('preserves completed plan steps and records plan_history in mergeUpdatedPlan', () => {

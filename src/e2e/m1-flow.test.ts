@@ -166,16 +166,33 @@ describe('M1 end-to-end mobile flow (S8 automated verification)', () => {
     expect(gen1.pinCheck.valid).toBe(true);
     expect(idea.lifecycle).toBe('prototype_generated');
 
-    // 4. Open idea modal and verify both prototype & dashboard tabs render cleanly on touch
+    // 4. Open idea modal and verify 3 tabs + sticky header + FAB hidden state
     openIdea(idea.id);
+    expect(document.body.classList.contains('idea-modal-open')).toBe(true);
+    expect(document.querySelector('#dlg [data-head-action="discuss"]')).not.toBeNull();
+    expect(document.querySelector('#dlg [data-head-action="export-md"]')).not.toBeNull();
+
+    const planTab = document.querySelector<HTMLButtonElement>('[data-tab-id="plan"]')!;
+    const protoTab = document.querySelector<HTMLButtonElement>('[data-tab-id="prototype"]')!;
+    const dashTab = document.querySelector<HTMLButtonElement>('[data-tab-id="dashboard"]')!;
+    expect(planTab.getAttribute('aria-selected')).toBe('true');
+
+    protoTab.click();
     await vi.waitFor(() => {
-      const dlgText = document.querySelector('#dlg')?.textContent || '';
-      expect(dlgText).toContain('GPIO18');
-      expect(dlgText).toContain('Preferences.h');
-      expect(dlgText).toContain('تشغيل المحاكاة');
+      const protoPanel = document.querySelector<HTMLElement>('[data-panel-id="prototype"]')!;
+      expect(protoPanel.hidden).toBe(false);
+      expect(protoPanel.textContent).toContain('GPIO18');
+      expect(protoPanel.textContent).toContain('Preferences.h');
     });
     // Touch device uses <pre> with copy button rather than Monaco
     expect(document.querySelector('#dlg pre')).not.toBeNull();
+
+    dashTab.click();
+    await vi.waitFor(() => {
+      const dashPanel = document.querySelector<HTMLElement>('[data-panel-id="dashboard"]')!;
+      expect(dashPanel.hidden).toBe(false);
+      expect(dashPanel.textContent).toContain('تشغيل المحاكاة');
+    });
 
     // 5. Revise prototype -> revision v2
     const gen2 = await generatePrototype(idea, {

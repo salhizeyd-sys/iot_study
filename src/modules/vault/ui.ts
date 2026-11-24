@@ -39,6 +39,8 @@ import { SpeechSession, startSpeechDictation } from './speech';
 export const filt: FilterState = { q: '', type: '', domain: '' };
 export let chat: ChatMessage[] = [];
 let activeDraftId: string | null = null;
+let activeIdeaModalId: string | null = null;
+let activeIdeaTabId = 'plan';
 let sessionNewMessages = 0;
 let busy = false;
 let speechSession: SpeechSession | null = null;
@@ -507,104 +509,167 @@ export function discussQuickDraft(): void {
   newIdea(undefined, rawText);
 }
 
-export function openIdea(id: string): void {
+export function openIdea(id: string, requestedTabId?: string): void {
   const dlg = $('#dlg') as HTMLDialogElement | null;
   if (!dlg) return;
   const i = S.ideas.find((x) => x.id === id);
   if (!i) return;
+
   const f = FOCUS[i.focus] || ['غير محدد', 'wn'];
   const extraTabs = registry.getIdeaTabs(i, S.settings);
+  const allTabs = [
+    { id: 'plan', title: '📋 الخطة' },
+    ...extraTabs.map((t) => ({ id: t.id, title: t.title })),
+  ];
+
+  if (requestedTabId && allTabs.some((t) => t.id === requestedTabId)) {
+    activeIdeaTabId = requestedTabId;
+  } else if (activeIdeaModalId !== id || !allTabs.some((t) => t.id === activeIdeaTabId)) {
+    activeIdeaTabId = 'plan';
+  }
+  activeIdeaModalId = id;
+
   const historyCount = i.plan_history?.length || 0;
 
   dlg.innerHTML = `
-  <div class="bar" style="justify-content:space-between"><h2 style="margin:0">${esc(
-    i.name
-  )}</h2><button class="btn g" onclick="dlg.close()" aria-label="إغلاق">✕</button></div>
-  <span class="tag">${esc(i.domain)}</span><span class="tag">${TYPES[i.type] || i.type}</span><span class="tag ${f[1]}">${f[0]}</span>${
-    i.duration ? `<span class="tag">${esc(i.duration)}</span>` : ''
-  }
-  ${i.focus_note ? `<p style="color:var(--mu);margin:6px 0">${esc(i.focus_note)}</p>` : ''}
-  ${
-    i.memory?.trim()
-      ? `<div class="warn"><b>🧠 ذاكرة المشروع:</b><div style="white-space:pre-wrap;margin-top:4px">${esc(
-          i.memory
-        )}</div></div>`
-      : ''
-  }
-  <label>الحالة</label><select onchange="upd('${id}','status',this.value)">${Object.entries(
-    STATUS
-  )
-    .map(
-      ([k, v]) =>
-        `<option value="${k}" ${i.status === k ? 'selected' : ''}>${v}</option>`
-    )
-    .join('')}</select>
-  <h2>المشكلة</h2><div>${esc(i.problem)}</div><h2>الحل</h2><div>${esc(i.solution)}</div>
-  ${
-    i.skills && i.skills.length
-      ? `<h2>المهارات المطلوبة</h2><ul>${i.skills
-          .map((s) => `<li>${esc(s)}</li>`)
-          .join('')}</ul>`
-      : ''
-  }
-  <h2>خطة التنفيذ${
-    historyCount ? ` <span class="tag">سجل التعديلات: ${historyCount}</span>` : ''
-  }</h2>${(i.plan || [])
-    .map(
-      (p, n) =>
-        `<label class="step ${
-          p.done ? 'done' : ''
-        }" style="color:inherit;font-size:inherit;margin:6px 0"><input type="checkbox" ${
-          p.done ? 'checked' : ''
-        } onchange="tick('${id}',${n},this.checked)"><span><b>${esc(
-          p.step
-        )}</b><br>${esc(p.detail)}</span></label>`
-    )
-    .join('') || '<p style="color:var(--mu)">لا خطة بعد — اضغط «ناقش هذا المشروع» لتحويل المسودة إلى خطة.</p>'}
-  ${
-    i.components && i.components.length
-      ? `<h2>العناصر المطلوبة</h2><table class="responsive-table"><thead><tr><th>العنصر</th><th>الكمية</th><th>ملاحظة</th></tr></thead><tbody>${i.components
-          .map(
-            (c) =>
-              `<tr><td data-label="العنصر">${esc(c.name)}</td><td data-label="الكمية">${esc(
-                c.qty || 1
-              )}</td><td data-label="ملاحظة">${esc(c.note || '—')}</td></tr>`
-          )
-          .join('')}</tbody></table>`
-      : ''
-  }
-  <div id="idea-module-tabs"></div>
-  <label>ملاحظاتي</label><textarea rows="3" onchange="upd('${id}','notes',this.value)">${esc(
-    i.notes
-  )}</textarea>
-  <div class="bar" style="margin-top:14px">
-    <button class="btn" onclick="discussIdea('${id}')">💬 ناقش هذا المشروع</button>
-    ${
-      i.plan?.length
-        ? `<button class="btn g" onclick="reviseProjectPlanFromModal('${id}')">✏️ عدّل الخطة</button>`
-        : ''
-    }
-    <button class="btn g" onclick="copyPrompt('${id}')">نسخ كبرومبت لمساعد آخر</button>
-    <button class="btn g" onclick="exp('${id}','md')">تصدير .md</button>
-    <button class="btn g" onclick="exp('${id}','json')">تصدير .json</button>
-    <button class="btn d" onclick="del('${id}')">حذف</button>
+  <div class="idea-modal-sticky">
+    <div class="idea-modal-head">
+      <h2 class="idea-modal-title">${esc(i.name)}</h2>
+      <div class="idea-modal-head-actions">
+        <button type="button" class="btn" data-head-action="discuss" onclick="discussIdea('${id}')">💬 ناقش هذا المشروع</button>
+        <button type="button" class="btn g" data-head-action="export-md" onclick="exp('${id}','md')">📄 .md</button>
+        <button type="button" class="btn g idea-close-btn" onclick="dlg.close()" aria-label="إغلاق">✕</button>
+      </div>
+    </div>
+    <div class="idea-tabs" role="tablist" aria-label="أقسام المشروع">
+      ${allTabs
+        .map(
+          (tab) => `<button type="button" role="tab" class="idea-tab-btn${
+            tab.id === activeIdeaTabId ? ' active' : ''
+          }" data-tab-id="${esc(tab.id)}" aria-selected="${
+            tab.id === activeIdeaTabId ? 'true' : 'false'
+          }">${esc(tab.title)}</button>`
+        )
+        .join('')}
+    </div>
+  </div>
+
+  <div class="idea-tab-panels">
+    <section role="tabpanel" data-panel-id="plan"${activeIdeaTabId === 'plan' ? '' : ' hidden'}>
+      <div class="bar" style="margin-top:0">
+        <span class="tag">${esc(i.domain)}</span><span class="tag">${
+          TYPES[i.type] || i.type
+        }</span><span class="tag ${f[1]}">${f[0]}</span>${
+          i.duration ? `<span class="tag">${esc(i.duration)}</span>` : ''
+        }
+      </div>
+      ${i.focus_note ? `<p style="color:var(--mu);margin:6px 0">${esc(i.focus_note)}</p>` : ''}
+      ${
+        i.memory?.trim()
+          ? `<div class="warn"><b>🧠 ذاكرة المشروع:</b><div style="white-space:pre-wrap;margin-top:4px">${esc(
+              i.memory
+            )}</div></div>`
+          : ''
+      }
+      <label>الحالة</label><select onchange="upd('${id}','status',this.value)">${Object.entries(
+        STATUS
+      )
+        .map(
+          ([k, v]) =>
+            `<option value="${k}" ${i.status === k ? 'selected' : ''}>${v}</option>`
+        )
+        .join('')}</select>
+      <h3>المشكلة</h3><div>${esc(i.problem)}</div><h3>الحل</h3><div>${esc(i.solution)}</div>
+      ${
+        i.skills && i.skills.length
+          ? `<h3>المهارات المطلوبة</h3><ul>${i.skills
+              .map((s) => `<li>${esc(s)}</li>`)
+              .join('')}</ul>`
+          : ''
+      }
+      <div class="bar" style="justify-content:space-between;margin-top:14px">
+        <h3 style="margin:0">خطة التنفيذ${
+          historyCount ? ` <span class="tag">سجل التعديلات: ${historyCount}</span>` : ''
+        }</h3>
+        ${
+          i.plan?.length
+            ? `<button type="button" class="btn g" onclick="reviseProjectPlanFromModal('${id}')">✏️ عدّل الخطة</button>`
+            : ''
+        }
+      </div>
+      ${(i.plan || [])
+        .map(
+          (p, n) =>
+            `<label class="step ${
+              p.done ? 'done' : ''
+            }" style="color:inherit;font-size:inherit;margin:6px 0"><input type="checkbox" ${
+              p.done ? 'checked' : ''
+            } onchange="tick('${id}',${n},this.checked)"><span><b>${esc(
+              p.step
+            )}</b><br>${esc(p.detail)}</span></label>`
+        )
+        .join('') || '<p style="color:var(--mu)">لا خطة بعد — اضغط «💬 ناقش هذا المشروع» لتحويل المسودة إلى خطة.</p>'}
+      ${
+        i.components && i.components.length
+          ? `<h3>العناصر المطلوبة</h3><table class="responsive-table"><thead><tr><th>العنصر</th><th>الكمية</th><th>ملاحظة</th></tr></thead><tbody>${i.components
+              .map(
+                (c) =>
+                  `<tr><td data-label="العنصر">${esc(c.name)}</td><td data-label="الكمية">${esc(
+                    c.qty || 1
+                  )}</td><td data-label="ملاحظة">${esc(c.note || '—')}</td></tr>`
+              )
+              .join('')}</tbody></table>`
+          : ''
+      }
+      <label>ملاحظاتي</label><textarea rows="3" onchange="upd('${id}','notes',this.value)">${esc(
+        i.notes
+      )}</textarea>
+      <div class="bar" style="margin-top:14px">
+        <button type="button" class="btn g" onclick="copyPrompt('${id}')">نسخ كبرومبت لمساعد آخر</button>
+        <button type="button" class="btn g" onclick="exp('${id}','json')">تصدير .json</button>
+        <button type="button" class="btn d" onclick="del('${id}')">حذف</button>
+      </div>
+    </section>
   </div>`;
 
-  if (extraTabs.length) {
-    const host = dlg.querySelector('#idea-module-tabs');
-    if (host) {
-      for (const tab of extraTabs) {
-        const section = document.createElement('section');
-        const heading = document.createElement('h2');
-        heading.textContent = tab.title;
-        section.appendChild(heading);
-        section.appendChild(tab.render(i));
-        host.appendChild(section);
+  const panelsHost = dlg.querySelector('.idea-tab-panels');
+  if (panelsHost) {
+    for (const tab of extraTabs) {
+      const panel = document.createElement('section');
+      panel.setAttribute('role', 'tabpanel');
+      panel.dataset.panelId = tab.id;
+      if (tab.id !== activeIdeaTabId) {
+        panel.hidden = true;
       }
+      panel.appendChild(tab.render(i));
+      panelsHost.appendChild(panel);
     }
   }
 
-  if (typeof dlg.showModal === 'function') {
+  const selectIdeaTab = (nextId: string) => {
+    activeIdeaTabId = nextId;
+    dlg.querySelectorAll<HTMLButtonElement>('[data-tab-id]').forEach((btn) => {
+      const active = btn.dataset.tabId === nextId;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    dlg.querySelectorAll<HTMLElement>('[data-panel-id]').forEach((panel) => {
+      panel.hidden = panel.dataset.panelId !== nextId;
+    });
+  };
+
+  dlg.querySelectorAll<HTMLButtonElement>('[data-tab-id]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.tabId) selectIdeaTab(btn.dataset.tabId);
+    });
+  });
+
+  document.body.classList.add('idea-modal-open');
+  dlg.onclose = () => {
+    document.body.classList.remove('idea-modal-open');
+  };
+
+  if (typeof dlg.showModal === 'function' && !dlg.open) {
     dlg.showModal();
   }
 }
@@ -612,6 +677,7 @@ export function openIdea(id: string): void {
 export function discussIdea(id: string): void {
   const dlg = $('#dlg') as HTMLDialogElement | null;
   if (dlg && typeof dlg.close === 'function') dlg.close();
+  document.body.classList.remove('idea-modal-open');
   newIdea(id);
 }
 
@@ -659,6 +725,7 @@ export const del = (id: string): void => {
     bus.emit('idea:deleted', { ideaId: id });
     const dlg = $('#dlg') as HTMLDialogElement | null;
     if (dlg) dlg.close();
+    document.body.classList.remove('idea-modal-open');
     home();
   }
 };

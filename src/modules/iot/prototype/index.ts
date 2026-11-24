@@ -13,7 +13,7 @@ export const iotPrototypeModule: AppModule = {
   ideaTabs: [
     {
       id: 'prototype',
-      title: '🔌 النموذج الأولي (ESP32)',
+      title: '💻 الكود والتحذيرات',
       render: (idea) => renderPrototypeTab(idea),
     },
   ],

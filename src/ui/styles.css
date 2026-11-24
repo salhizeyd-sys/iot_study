@@ -540,3 +540,109 @@ table.responsive-table th {
   padding: 0;
   accent-color: var(--ac);
 }
+
+/* Idea Modal Sticky Header + 3 Tabs */
+#dlg {
+  padding: 0 16px 16px;
+}
+
+.idea-modal-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--card);
+  border-bottom: 1px solid var(--bd);
+  padding: 14px 0 8px;
+}
+
+.idea-modal-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.idea-modal-title {
+  margin: 0;
+  font-size: 17px;
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.idea-modal-head-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.idea-modal-head-actions .btn {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.idea-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.idea-tab-btn {
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--mu);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.idea-tab-btn.active {
+  background: var(--ac);
+  border-color: var(--ac);
+  color: var(--card);
+  font-weight: 700;
+}
+
+.idea-tab-panels {
+  padding-top: 12px;
+}
+
+.idea-tab-panels h3 {
+  font-size: 15px;
+  margin: 14px 0 6px;
+}
+
+/* Hide floating quick-capture button while project modal is open */
+body.idea-modal-open .fab,
+body:has(#dlg[open]) .fab {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  #dlg {
+    padding: 0 12px 14px;
+  }
+
+  .idea-modal-head-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .idea-modal-head-actions [data-head-action="discuss"] {
+    flex: 1 1 auto;
+  }
+
+  .idea-tab-btn {
+    font-size: 12px;
+    padding: 6px 4px;
+  }
+}
