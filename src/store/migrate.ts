@@ -3,15 +3,20 @@ import {
   HardwareComponent,
   Idea,
   IdeaFocus,
+  IdeaLifecycle,
   IdeaStatus,
   IdeaType,
   PlanStep,
   Settings,
-} from '../types';
-import { DEFAULTS, FOCUS, STATUS, TYPES } from '../config';
+  FOCUS,
+  LIFECYCLE,
+  STATUS,
+  TYPES,
+  mergeSettings,
+} from '../core';
 import { MigrationCapableStore, Store } from './types';
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 export const LEGACY_STORAGE_KEY = 'ideavault.v1';
 export const LEGACY_BACKUP_KEY = 'ideavault.v1.backup';
 
@@ -22,12 +27,21 @@ function randomId(): string {
   return `idea-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export function statusToLifecycle(status: IdeaStatus): IdeaLifecycle {
+  if (status === 'done') return 'done';
+  if (status === 'planned' || status === 'doing') return 'planned';
+  return 'idea';
+}
+
 export function migrate(raw: unknown): Idea {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
 
   const type: IdeaType = TYPES[r.type as IdeaType] ? (r.type as IdeaType) : 'software';
   const status: IdeaStatus = STATUS[r.status as IdeaStatus] ? (r.status as IdeaStatus) : 'idea';
   const focus: IdeaFocus = FOCUS[r.focus as IdeaFocus] ? (r.focus as IdeaFocus) : 'partial';
+  const lifecycle: IdeaLifecycle = LIFECYCLE[r.lifecycle as IdeaLifecycle]
+    ? (r.lifecycle as IdeaLifecycle)
+    : statusToLifecycle(status);
 
   const rawSkills = Array.isArray(r.skills)
     ? r.skills
@@ -59,6 +73,8 @@ export function migrate(raw: unknown): Idea {
     domain: typeof r.domain === 'string' && r.domain.trim() ? r.domain : 'عام',
     type,
     status,
+    lifecycle,
+    memory: typeof r.memory === 'string' ? r.memory : '',
     problem: typeof r.problem === 'string' ? r.problem : '',
     solution: typeof r.solution === 'string' ? r.solution : '',
     focus,
@@ -119,7 +135,6 @@ export async function migrateFromLocalStorage(
     return { migrated: false, ideasCount: 0, hasBackup: false };
   }
 
-  // Keep a backup copy in localStorage until migration is confirmed complete
   storage.setItem(LEGACY_BACKUP_KEY, raw);
 
   const rawIdeas = Array.isArray(parsed.ideas) ? parsed.ideas : [];
@@ -131,7 +146,7 @@ export async function migrateFromLocalStorage(
   }
 
   if (parsed.settings && typeof parsed.settings === 'object') {
-    await metaStore.saveSettings({ ...DEFAULTS, ...parsed.settings });
+    await metaStore.saveSettings(mergeSettings(parsed.settings));
   }
 
   await metaStore.markLocalStorageMigrated();

@@ -1,5 +1,4 @@
-import { Idea } from '../types';
-import { TYPES, STATUS, FOCUS } from '../config';
+import { Idea, TYPES, STATUS, FOCUS } from '../core';
 
 export const toMD = (i: Idea): string =>
   `# ${i.name}

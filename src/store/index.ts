@@ -1,5 +1,4 @@
-import { AppState, Idea } from '../types';
-import { DEFAULTS } from '../config';
+import { AppState, Idea, mergeSettings } from '../core';
 import { IndexedDBStore } from './idb';
 import { CURRENT_SCHEMA_VERSION, migrate, migrateFromLocalStorage } from './migrate';
 
@@ -11,13 +10,14 @@ export {
   LEGACY_BACKUP_KEY,
   migrate,
   migrateFromLocalStorage,
+  statusToLifecycle,
 } from './migrate';
 
 export const store = new IndexedDBStore();
 
 export const S: AppState = {
   ideas: [],
-  settings: { ...DEFAULTS },
+  settings: mergeSettings(),
 };
 
 let writeQueue: Promise<void> = Promise.resolve();
@@ -26,7 +26,7 @@ export async function initStore(): Promise<void> {
   await migrateFromLocalStorage(store, store);
   const [ideas, settings] = await Promise.all([store.list(), store.getSettings()]);
   S.ideas = ideas;
-  S.settings = { ...DEFAULTS, ...(settings || {}) };
+  S.settings = mergeSettings(settings);
 }
 
 async function flushState(): Promise<void> {

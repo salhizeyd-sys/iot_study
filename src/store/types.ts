@@ -1,4 +1,4 @@
-import { Idea, Settings } from '../types';
+import { Idea, Settings } from '../core';
 
 export interface Store<T extends { id: string } = Idea> {
   list(): Promise<T[]>;

@@ -1,4 +1,4 @@
-import { ChatMessage } from '../types';
+import { ChatMessage } from '../core';
 import { S } from '../store';
 
 export async function callLLM(messages: ChatMessage[], system: string): Promise<string> {

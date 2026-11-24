@@ -1,5 +1,5 @@
 import { DBSchema, IDBPDatabase, openDB } from 'idb';
-import { Idea, Settings } from '../types';
+import { Idea, Settings } from '../core';
 import { CURRENT_SCHEMA_VERSION, migrate } from './migrate';
 import { MigrationCapableStore, Store } from './types';
 

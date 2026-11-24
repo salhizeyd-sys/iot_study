@@ -1,0 +1,65 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  DEFAULT_FEATURES,
+  EventBus,
+  ModuleRegistry,
+  detectCapabilities,
+  isFeatureEnabled,
+  mergeSettings,
+} from './index';
+
+describe('core architecture', () => {
+  it('enables only vault feature flag by default', () => {
+    const settings = mergeSettings();
+    expect(settings.features).toEqual(DEFAULT_FEATURES);
+    expect(isFeatureEnabled(settings, 'vault')).toBe(true);
+    expect(isFeatureEnabled(settings, 'iot.prototype')).toBe(false);
+    expect(isFeatureEnabled(settings, 'iot.dashboard')).toBe(false);
+    expect(isFeatureEnabled(settings, 'iot.telemetry')).toBe(false);
+    expect(isFeatureEnabled(settings, 'iot.flash')).toBe(false);
+    expect(isFeatureEnabled(settings, 'iot.ota')).toBe(false);
+    expect(isFeatureEnabled(settings, 'focus')).toBe(false);
+  });
+
+  it('delivers typed events via EventBus and dispatches only to enabled modules', () => {
+    const bus = new EventBus();
+    const reg = new ModuleRegistry();
+    const vaultHandler = vi.fn();
+    const iotHandler = vi.fn();
+
+    reg.register({
+      id: 'vault',
+      enabled: (s) => isFeatureEnabled(s, 'vault'),
+      onEvent: vaultHandler,
+    });
+    reg.register({
+      id: 'iot.prototype',
+      enabled: (s) => isFeatureEnabled(s, 'iot.prototype'),
+      onEvent: iotHandler,
+    });
+
+    const settings = mergeSettings();
+    const unbind = reg.bindToBus(bus, () => settings);
+
+    bus.emit('idea:status-changed', {
+      ideaId: '1',
+      status: 'planned',
+      lifecycle: 'planned',
+    });
+
+    expect(vaultHandler).toHaveBeenCalledTimes(1);
+    expect(iotHandler).not.toHaveBeenCalled();
+
+    unbind();
+    bus.clear();
+    reg.clear();
+  });
+
+  it('detects capabilities safely outside browser APIs', () => {
+    const c = detectCapabilities();
+    expect(typeof c.webSerial).toBe('boolean');
+    expect(typeof c.speech).toBe('boolean');
+    expect(typeof c.touch).toBe('boolean');
+    expect(typeof c.standalone).toBe('boolean');
+  });
+});

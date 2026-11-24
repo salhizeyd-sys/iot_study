@@ -12,7 +12,7 @@ import {
   save,
   store as defaultStore,
 } from './index';
-import { Idea } from '../types';
+import { Idea } from '../core';
 
 function createMemoryStorage(initial: Record<string, string> = {}): Storage {
   const data = new Map<string, string>(Object.entries(initial));
@@ -61,6 +61,8 @@ describe('IndexedDBStore & migration', () => {
       domain: 'IoT',
       type: 'hardware',
       status: 'idea',
+      lifecycle: 'idea',
+      memory: '',
       problem: 'ارتفاع الحرارة',
       solution: 'حساس DHT22',
       focus: 'aligned',
@@ -117,6 +119,8 @@ describe('IndexedDBStore & migration', () => {
     expect(migrated.id).toBe('legacy-1');
     expect(migrated.type).toBe('software');
     expect(migrated.status).toBe('idea');
+    expect(migrated.lifecycle).toBe('idea');
+    expect(migrated.memory).toBe('');
     expect(migrated.focus).toBe('partial');
     expect(migrated.skills).toEqual(['C++', 'FreeRTOS']);
     expect(migrated.plan).toEqual([{ step: 'خطوة 1', detail: 'تفصيل', done: false }]);
