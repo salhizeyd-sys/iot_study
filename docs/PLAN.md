@@ -7,7 +7,7 @@
 | الخطوة | العنوان | الحالة |
 |---|---|---|
 | S1 | Vite + TypeScript | ✅ |
-| S2 | التخزين: واجهة Store + IndexedDB | ⬜ |
+| S2 | التخزين: واجهة Store + IndexedDB | ✅ |
 | S3 | مواءمة المعمارية (وحدات، قدرات، أعلام) | ⬜ |
 | S4 | الهاتف: واجهة متجاوبة + PWA + نشر | ⬜ 🛑 |
 | S5 | المساعد الواعي بالمشروع | ⬜ |
@@ -63,6 +63,7 @@
 ## S2: التخزين
 **المهام:** عرّف واجهة `Store` (list/get/put/remove) في `src/store/`. نفّذ `IndexedDBStore` بمكتبة `idb`. ترحيل لمرة واحدة من localStorage (المفتاح `ideavault.v1`) مع إبقاء نسخة احتياطية منه حتى تأكد النجاح. أضف `schemaVersion` ودالة `migrate`. أضف Vitest مع `fake-indexeddb`.
 **معايير القبول:** اختبارات تمر لـ CRUD والترحيل (بما فيها بيانات قديمة بلا حقول جديدة)؛ يدوياً: أفكاري الحالية تظهر بعد إعادة التحميل، وتبقى بعد مسح localStorage.
+**الدليل:** `npm.cmd run build` نجح في 233ms؛ `npm.cmd test` (`vitest run` + `fake-indexeddb`) نجح بـ 6/6 اختبارات في `src/store/store.test.ts` تغطي CRUD وترقية السجلات القديمة والترحيل لمرة واحدة من `ideavault.v1` مع حفظ `ideavault.v1.backup` وبقاء البيانات بعد مسح `localStorage` وإعادة `initStore()`؛ أُعيد التحقق من تكافؤ الميزات (1–9) عبر واجهة `S` و`save()`.
 
 ## S3: مواءمة المعمارية
 **المهام:** القسم 5 و6 من ARCHITECTURE.md: `core/` (types مع schemaVersion وmemory وlifecycle، settings، ناقل أحداث typed، سجل وحدات، `capabilities.ts`)؛ نقل منطق الأفكار إلى `modules/vault/`؛ feature flags (كلها مغلقة عدا vault)؛ `docs/DECISIONS.md` بأول القرارات؛ قاعدة ESLint تمنع استيراد وحدة من وحدة.

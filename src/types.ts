@@ -23,6 +23,7 @@ export interface ChatMessage {
 
 export interface Idea {
   id: string;
+  schemaVersion?: number;
   created: number;
   name: string;
   domain: string;

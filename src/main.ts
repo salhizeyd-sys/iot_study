@@ -1,4 +1,12 @@
 import { setupWindowGlobals, home } from './ui';
+import { initStore } from './store';
 
 setupWindowGlobals();
-home();
+
+initStore()
+  .catch((err) => {
+    console.error('Failed to initialize IndexedDB store:', err);
+  })
+  .finally(() => {
+    home();
+  });
