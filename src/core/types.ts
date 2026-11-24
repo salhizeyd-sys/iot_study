@@ -72,6 +72,7 @@ export interface Settings {
   base: string;
   goals: string;
   maxDoing: number;
+  speechLang: string;
   features: FeatureFlags;
 }
 

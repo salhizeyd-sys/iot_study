@@ -8,6 +8,7 @@ import {
   STATUS,
   TYPES,
   bus,
+  caps,
   mergeSettings,
   registry,
 } from '../../core';
@@ -23,12 +24,34 @@ import { sysChat, sysPlan } from '../../prompts';
 import { dl, toMD, toPrompt } from '../../export';
 import { $, esc, toast } from '../../ui';
 import { filterIdeas, norm } from './logic';
+import { SpeechSession, startSpeechDictation } from './speech';
 
 export const filt: FilterState = { q: '', type: '', domain: '' };
 export let chat: ChatMessage[] = [];
+let activeDraftId: string | null = null;
 let busy = false;
+let speechSession: SpeechSession | null = null;
+
+function setNavActive(name: 'home' | 'new' | 'quick' | 'settings'): void {
+  document.querySelectorAll<HTMLButtonElement>('.bottom-nav button').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.nav === name);
+  });
+}
+
+function stopSpeechIfActive(): void {
+  if (speechSession) {
+    speechSession.stop();
+    speechSession = null;
+  }
+  const micBtn = $('#mic-btn') as HTMLButtonElement | null;
+  if (micBtn) {
+    micBtn.classList.remove('rec');
+    micBtn.textContent = '🎙️ إملاء صوتي';
+  }
+}
 
 export function home(): void {
+  setNavActive('home');
   const app = $('#app');
   if (!app) return;
   const doing = S.ideas.filter((i) => i.status === 'doing').length;
@@ -76,17 +99,33 @@ export function grid(): void {
     `<div class="empty" style="grid-column:1/-1">${
       S.ideas.length
         ? 'لا نتائج مطابقة.'
-        : 'خزانتك فارغة. اضغط «فكرة جديدة» وناقشها مع المساعد.'
+        : 'خزانتك فارغة. اضغط «فكرة جديدة» أو «فكرة سريعة» وابدأ.'
     }</div>`;
 }
 
-export function newIdea(): void {
-  chat = [];
+export function newIdea(draftId?: string, initialText?: string): void {
+  setNavActive('new');
+  activeDraftId = draftId || null;
+  const draft = draftId ? S.ideas.find((x) => x.id === draftId) : undefined;
+  if (draft) {
+    chat = draft.chat?.length
+      ? draft.chat.map((m) => ({ ...m }))
+      : draft.problem
+        ? [{ role: 'user', content: draft.problem }]
+        : [];
+  } else {
+    chat = [];
+  }
+
   const app = $('#app');
   if (!app) return;
-  app.innerHTML = `<button class="btn g" onclick="home()">← الخزانة</button><h2>فكرة جديدة</h2>
+  app.innerHTML = `<button class="btn g" onclick="home()">← الخزانة</button><h2>${
+    draft ? esc(draft.name) : 'فكرة جديدة'
+  }</h2>
   <div class="msgs" id="msgs"></div>
-  <textarea id="inp" rows="3" placeholder="اشرح فكرتك بحرية، والمساعد سيسألك ويختبرها معك."></textarea>
+  <textarea id="inp" rows="3" placeholder="اشرح فكرتك بحرية، والمساعد سيسألك ويختبرها معك.">${
+    initialText ? esc(initialText) : ''
+  }</textarea>
   <div class="bar"><button class="btn" id="send" onclick="send()">إرسال</button><button class="btn g" id="fin" onclick="finalize()">حوّلها إلى خطة واحفظها</button></div>`;
   paint();
 }
@@ -97,7 +136,7 @@ export function paint(): void {
   m.innerHTML = chat.length
     ? chat.map((c) => `<div class="m ${c.role}">${esc(c.content)}</div>`).join('')
     : '<div class="empty">ابدأ بوصف الفكرة. سأذكّرك بأهدافك: ' + esc(S.settings.goals) + '</div>';
-  m.lastElementChild?.scrollIntoView({ block: 'end' });
+  m.lastElementChild?.scrollIntoView?.({ block: 'end' });
 }
 
 export async function guard(fn: () => Promise<void>): Promise<void> {
@@ -154,24 +193,173 @@ export const finalize = () =>
     const m = r.match(/\{[\s\S]*\}/);
     if (!m) throw new Error('لم يُرجع المساعد JSON صالحاً، أعد المحاولة');
     const parsed = JSON.parse(m[0]);
-    const idea: Idea = {
-      id: crypto.randomUUID(),
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-      created: Date.now(),
-      status: 'idea',
-      lifecycle: 'idea',
-      memory: '',
-      notes: '',
-      chat: chat.slice(),
-      ...norm(parsed),
-    };
-    S.ideas.unshift(idea);
+    const normalized = norm(parsed);
+    const existing = activeDraftId
+      ? S.ideas.find((x) => x.id === activeDraftId)
+      : undefined;
+
+    let savedId: string;
+    if (existing) {
+      Object.assign(existing, normalized, {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        status: existing.status === 'idea' ? 'planned' : existing.status,
+        lifecycle: existing.lifecycle === 'idea' ? 'planned' : existing.lifecycle,
+        chat: chat.slice(),
+      });
+      savedId = existing.id;
+      bus.emit('idea:updated', { ideaId: savedId });
+    } else {
+      const idea: Idea = {
+        id: crypto.randomUUID(),
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        created: Date.now(),
+        status: 'idea',
+        lifecycle: 'idea',
+        memory: '',
+        notes: '',
+        chat: chat.slice(),
+        ...normalized,
+      };
+      S.ideas.unshift(idea);
+      savedId = idea.id;
+      bus.emit('idea:created', { ideaId: savedId });
+    }
+
     save(toast);
-    bus.emit('idea:created', { ideaId: idea.id });
     chat = [];
+    activeDraftId = null;
     home();
-    openIdea(idea.id);
+    openIdea(savedId);
   });
+
+export function openQuickCapture(): void {
+  setNavActive('quick');
+  const qdlg = $('#quick') as HTMLDialogElement | null;
+  if (!qdlg) return;
+  stopSpeechIfActive();
+
+  const speechBtnHtml = caps.speech
+    ? `<button type="button" class="btn g" id="mic-btn" onclick="toggleSpeech()">🎙️ إملاء صوتي</button>`
+    : '';
+
+  qdlg.innerHTML = `
+  <div class="bar" style="justify-content:space-between">
+    <h2 style="margin:0">⚡ فكرة سريعة</h2>
+    <button type="button" class="btn g" onclick="closeQuickCapture()" aria-label="إغلاق">✕</button>
+  </div>
+  <label for="quick-title">اسم مختصر (اختياري)</label>
+  <input id="quick-title" placeholder="مثال: حسّاس ري ذكي للحديقة">
+  <label for="quick-text">وصف الفكرة أو الملاحظة الصوتية</label>
+  <textarea id="quick-text" rows="4" placeholder="اكتب فكرتك بسرعة أو استخدم الإملاء الصوتي لحفظها كمسودة دون إنترنت…"></textarea>
+  <div class="bar">
+    ${speechBtnHtml}
+    <button type="button" class="btn" onclick="saveQuickDraft()">حفظ كمسودة</button>
+    <button type="button" class="btn g" onclick="discussQuickDraft()">ناقشها الآن</button>
+  </div>`;
+
+  if (typeof qdlg.showModal === 'function') {
+    qdlg.showModal();
+  }
+}
+
+export function closeQuickCapture(): void {
+  stopSpeechIfActive();
+  const qdlg = $('#quick') as HTMLDialogElement | null;
+  if (qdlg && typeof qdlg.close === 'function') {
+    qdlg.close();
+  }
+  setNavActive('home');
+}
+
+export function toggleSpeech(): void {
+  const micBtn = $('#mic-btn') as HTMLButtonElement | null;
+  if (speechSession) {
+    stopSpeechIfActive();
+    return;
+  }
+
+  if (micBtn) {
+    micBtn.classList.add('rec');
+    micBtn.textContent = '⏹️ إيقاف الاستماع';
+  }
+
+  const session = startSpeechDictation(S.settings.speechLang || 'ar-SA', {
+    onTranscript: (text) => {
+      const box = $('#quick-text') as HTMLTextAreaElement | null;
+      if (box) {
+        box.value = box.value.trim() ? `${box.value.trim()} ${text}` : text;
+      }
+    },
+    onError: (msg) => {
+      toast('⚠️ ' + msg);
+      stopSpeechIfActive();
+    },
+    onEnd: () => {
+      speechSession = null;
+      if (micBtn) {
+        micBtn.classList.remove('rec');
+        micBtn.textContent = '🎙️ إملاء صوتي';
+      }
+    },
+  });
+
+  if (!session) {
+    stopSpeechIfActive();
+  } else {
+    speechSession = session;
+  }
+}
+
+export function saveQuickDraft(): void {
+  const titleEl = $('#quick-title') as HTMLInputElement | null;
+  const textEl = $('#quick-text') as HTMLTextAreaElement | null;
+  const rawText = textEl?.value.trim() || '';
+  const rawTitle = titleEl?.value.trim() || '';
+
+  if (!rawText && !rawTitle) {
+    toast('اكتب فكرة أولاً');
+    return;
+  }
+
+  const fallbackName = rawText.split(/\s+/).slice(0, 6).join(' ');
+  const name = rawTitle || (fallbackName.length < rawText.length ? `${fallbackName}…` : fallbackName) || 'مسودة فكرة';
+
+  const draft: Idea = {
+    id: crypto.randomUUID(),
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    created: Date.now(),
+    name,
+    domain: 'مسودة',
+    type: 'both',
+    status: 'idea',
+    lifecycle: 'idea',
+    memory: '',
+    problem: rawText || rawTitle,
+    solution: '',
+    focus: 'partial',
+    focus_note: 'مسودة سريعة بانتظار النقاش',
+    skills: [],
+    duration: '',
+    plan: [],
+    components: [],
+    notes: '',
+    chat: rawText ? [{ role: 'user', content: rawText }] : [],
+  };
+
+  S.ideas.unshift(draft);
+  save(toast);
+  bus.emit('idea:created', { ideaId: draft.id });
+  closeQuickCapture();
+  home();
+  toast('تم حفظ المسودة دون إنترنت');
+}
+
+export function discussQuickDraft(): void {
+  const textEl = $('#quick-text') as HTMLTextAreaElement | null;
+  const rawText = textEl?.value.trim() || '';
+  closeQuickCapture();
+  newIdea(undefined, rawText);
+}
 
 export function openIdea(id: string): void {
   const dlg = $('#dlg') as HTMLDialogElement | null;
@@ -216,17 +404,17 @@ export function openIdea(id: string): void {
           p.step
         )}</b><br>${esc(p.detail)}</span></label>`
     )
-    .join('')}
+    .join('') || '<p style="color:var(--mu)">لا خطة بعد — اضغط «ناقش هذه الفكرة» لتحويل المسودة إلى خطة.</p>'}
   ${
     i.components && i.components.length
-      ? `<h2>العناصر المطلوبة</h2><ul>${i.components
+      ? `<h2>العناصر المطلوبة</h2><table class="responsive-table"><thead><tr><th>العنصر</th><th>الكمية</th><th>ملاحظة</th></tr></thead><tbody>${i.components
           .map(
             (c) =>
-              `<li>${esc(c.name)} × ${esc(c.qty || 1)} ${
-                c.note ? '— ' + esc(c.note) : ''
-              }</li>`
+              `<tr><td data-label="العنصر">${esc(c.name)}</td><td data-label="الكمية">${esc(
+                c.qty || 1
+              )}</td><td data-label="ملاحظة">${esc(c.note || '—')}</td></tr>`
           )
-          .join('')}</ul>`
+          .join('')}</tbody></table>`
       : ''
   }
   <div id="idea-module-tabs"></div>
@@ -234,7 +422,8 @@ export function openIdea(id: string): void {
     i.notes
   )}</textarea>
   <div class="bar" style="margin-top:14px">
-    <button class="btn" onclick="copyPrompt('${id}')">نسخ كبرومبت لمساعد آخر</button>
+    <button class="btn" onclick="discussIdea('${id}')">💬 ناقش هذه الفكرة</button>
+    <button class="btn g" onclick="copyPrompt('${id}')">نسخ كبرومبت لمساعد آخر</button>
     <button class="btn g" onclick="exp('${id}','md')">تصدير .md</button>
     <button class="btn g" onclick="exp('${id}','json')">تصدير .json</button>
     <button class="btn d" onclick="del('${id}')">حذف</button>
@@ -254,7 +443,15 @@ export function openIdea(id: string): void {
     }
   }
 
-  dlg.showModal();
+  if (typeof dlg.showModal === 'function') {
+    dlg.showModal();
+  }
+}
+
+export function discussIdea(id: string): void {
+  const dlg = $('#dlg') as HTMLDialogElement | null;
+  if (dlg && typeof dlg.close === 'function') dlg.close();
+  newIdea(id);
 }
 
 export const copyPrompt = (id: string): void => {
@@ -313,6 +510,7 @@ export const exp = (id: string, t: 'md' | 'json'): void => {
 };
 
 export function openSettings(): void {
+  setNavActive('settings');
   const set = $('#set') as HTMLDialogElement | null;
   if (!set) return;
   const s = S.settings;
@@ -331,13 +529,23 @@ export function openSettings(): void {
   <label>الحد الأقصى للمشاريع قيد التنفيذ</label><input id="sx" type="number" min="1" value="${esc(
     s.maxDoing
   )}">
+  <label>لغة الإملاء الصوتي</label><select id="sl">
+    <option value="ar-SA" ${s.speechLang === 'ar-SA' ? 'selected' : ''}>العربية (السعودية / عام - ar-SA)</option>
+    <option value="ar-DZ" ${s.speechLang === 'ar-DZ' ? 'selected' : ''}>العربية (الجزائر - ar-DZ)</option>
+    <option value="ar-EG" ${s.speechLang === 'ar-EG' ? 'selected' : ''}>العربية (مصر - ar-EG)</option>
+    <option value="ar-MA" ${s.speechLang === 'ar-MA' ? 'selected' : ''}>العربية (المغرب - ar-MA)</option>
+    <option value="en-US" ${s.speechLang === 'en-US' ? 'selected' : ''}>English (en-US)</option>
+    <option value="fr-FR" ${s.speechLang === 'fr-FR' ? 'selected' : ''}>Français (fr-FR)</option>
+  </select>
   <div class="bar" style="margin-top:14px"><button class="btn" onclick="saveSettings()">حفظ</button>
   <button class="btn g" onclick="backupIdeas()">نسخة احتياطية</button>
   <button class="btn g" onclick="const imp = document.getElementById('imp'); if(imp) imp.click()">استيراد</button><input id="imp" type="file" accept=".json" hidden onchange="if(this.files && this.files[0]) importFile(this.files[0])"></div>`;
 
   const sp = $('#sp') as HTMLSelectElement | null;
   if (sp) sp.value = s.provider;
-  set.showModal();
+  if (typeof set.showModal === 'function') {
+    set.showModal();
+  }
 }
 
 export function saveSettings(): void {
@@ -347,6 +555,7 @@ export function saveSettings(): void {
   const sb = $('#sb') as HTMLInputElement | null;
   const sg = $('#sg') as HTMLTextAreaElement | null;
   const sx = $('#sx') as HTMLInputElement | null;
+  const sl = $('#sl') as HTMLSelectElement | null;
   const set = $('#set') as HTMLDialogElement | null;
 
   S.settings = mergeSettings({
@@ -357,10 +566,11 @@ export function saveSettings(): void {
     base: sb ? sb.value.trim() : '',
     goals: sg ? sg.value.trim() : '',
     maxDoing: sx ? +sx.value || 2 : 2,
+    speechLang: sl ? sl.value : 'ar-SA',
   });
   save(toast);
   bus.emit('settings:changed', { settings: S.settings });
-  if (set) set.close();
+  if (set && typeof set.close === 'function') set.close();
   home();
   toast('تم الحفظ');
 }
@@ -406,6 +616,12 @@ export function setupWindowGlobals(): void {
   g.send = send;
   g.finalize = finalize;
   g.openIdea = openIdea;
+  g.discussIdea = discussIdea;
+  g.openQuickCapture = openQuickCapture;
+  g.closeQuickCapture = closeQuickCapture;
+  g.toggleSpeech = toggleSpeech;
+  g.saveQuickDraft = saveQuickDraft;
+  g.discussQuickDraft = discussQuickDraft;
   g.copyPrompt = copyPrompt;
   g.upd = upd;
   g.tick = tick;
