@@ -4,9 +4,11 @@ import { bus, caps, registry } from './core';
 import { initStore, S } from './store';
 import { setupWindowGlobals, vaultModule, home } from './modules/vault';
 import { iotPrototypeModule } from './modules/iot/prototype';
+import { iotDashboardModule } from './modules/iot/dashboard';
 
 registry.register(vaultModule);
 registry.register(iotPrototypeModule);
+registry.register(iotDashboardModule);
 registry.bindToBus(bus, () => S.settings);
 
 setupWindowGlobals();

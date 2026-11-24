@@ -494,3 +494,49 @@ table.responsive-table th {
   display: none;
   z-index: 25;
 }
+
+/* IoT Dashboard Widgets */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.widget-card {
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.widget-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mu);
+  margin-bottom: 8px;
+}
+
+.widget-svg {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.switch-btn {
+  width: 100%;
+  min-height: 44px;
+}
+
+.badge-pill {
+  font-size: 14px;
+  padding: 6px 14px;
+}
+
+.slider-wrap input[type="range"] {
+  min-height: 44px;
+  padding: 0;
+  accent-color: var(--ac);
+}
