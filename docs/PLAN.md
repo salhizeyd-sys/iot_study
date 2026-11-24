@@ -6,7 +6,7 @@
 
 | الخطوة | العنوان | الحالة |
 |---|---|---|
-| S1 | Vite + TypeScript | ✅ نُفذ (يحتاج تحققاً فقط) |
+| S1 | Vite + TypeScript | ✅ |
 | S2 | التخزين: واجهة Store + IndexedDB | ⬜ |
 | S3 | مواءمة المعمارية (وحدات، قدرات، أعلام) | ⬜ |
 | S4 | الهاتف: واجهة متجاوبة + PWA + نشر | ⬜ 🛑 |
@@ -58,6 +58,7 @@
 
 ## S1: التحقق من Vite + TypeScript
 **معايير القبول:** `npm run build` ينجح بلا أخطاء أنواع؛ `npm run dev` يعمل؛ السلوك مطابق للنسخة السابقة: كل بنود جدول التكافؤ (1 إلى 9) تعمل؛ يوجد README بطريقة التشغيل؛ `git init` وأول commit إن لم يوجد.
+**الدليل:** `npm.cmd run build` (`tsc && vite build`) نجح في 196ms بدون أخطاء (`dist/index.html`, `dist/assets/index-QUfmBvKD.js`)؛ `npm.cmd run dev` استجاب بـ HTTP 200 على `http://localhost:3000/`؛ طابقت `src/` مع `index.html.bak` لبنود التكافؤ (1–9)؛ `README.md` و`git` موجودان.
 
 ## S2: التخزين
 **المهام:** عرّف واجهة `Store` (list/get/put/remove) في `src/store/`. نفّذ `IndexedDBStore` بمكتبة `idb`. ترحيل لمرة واحدة من localStorage (المفتاح `ideavault.v1`) مع إبقاء نسخة احتياطية منه حتى تأكد النجاح. أضف `schemaVersion` ودالة `migrate`. أضف Vitest مع `fake-indexeddb`.
