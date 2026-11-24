@@ -2,7 +2,12 @@ import { AppState, Idea, mergeSettings } from '../core';
 import { IndexedDBStore } from './idb';
 import { CURRENT_SCHEMA_VERSION, migrate, migrateFromLocalStorage } from './migrate';
 
-export type { Store, SettingsStore, MigrationCapableStore } from './types';
+export type {
+  Store,
+  SettingsStore,
+  MigrationCapableStore,
+  PrototypeStore,
+} from './types';
 export { IndexedDBStore } from './idb';
 export {
   CURRENT_SCHEMA_VERSION,

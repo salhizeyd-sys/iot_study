@@ -26,6 +26,57 @@ export interface PlanHistoryEntry {
   plan: PlanStep[];
 }
 
+export type WidgetType =
+  | 'gauge'
+  | 'line_chart'
+  | 'status_badge'
+  | 'toggle_switch'
+  | 'slider';
+
+export interface Widget {
+  type: WidgetType;
+  key: string;
+  label: string;
+  min?: number;
+  max?: number;
+  unit?: string;
+}
+
+export interface WiringItem {
+  part: string;
+  part_pin: string;
+  mcu_pin: string;
+  note?: string;
+}
+
+export interface FirmwareFile {
+  name: string;
+  content: string;
+}
+
+export interface PrototypeV1 {
+  schema_version: 1;
+  board: { fqbn: string; ota: boolean };
+  wiring: WiringItem[];
+  firmware: { files: FirmwareFile[]; libraries: string[] };
+  dashboard: Widget[];
+  simulation: {
+    interval_ms: number;
+    frames: Record<string, number | boolean | string>[];
+  };
+  warnings: string[];
+}
+
+export interface PrototypeRecord {
+  id: string;
+  idea_id: string;
+  revision: number;
+  schema_version: 1;
+  data: PrototypeV1;
+  created_at: number;
+  change_summary?: string;
+}
+
 export interface PrototypeContextSummary {
   revision: number;
   boardFqbn: string;

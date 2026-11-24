@@ -18,6 +18,7 @@ import {
   migrate,
   save,
   statusToLifecycle,
+  store,
 } from '../../store';
 import {
   buildProjectContext,
@@ -614,10 +615,12 @@ export function discussIdea(id: string): void {
   newIdea(id);
 }
 
-export const copyPrompt = (id: string): void => {
+export const copyPrompt = async (id: string): Promise<void> => {
   const i = S.ideas.find((x) => x.id === id);
   if (!i) return;
-  navigator.clipboard.writeText(toPrompt(i)).then(() => toast('نُسخ كبرومبت جاهز'));
+  const proto = await store.getLatestPrototype(id);
+  await navigator.clipboard.writeText(toPrompt(i, proto));
+  toast('نُسخ كبرومبت جاهز');
 };
 
 export const upd = (id: string, k: keyof Idea, v: any): void => {
@@ -660,13 +663,16 @@ export const del = (id: string): void => {
   }
 };
 
-export const exp = (id: string, t: 'md' | 'json'): void => {
+export const exp = async (id: string, t: 'md' | 'json'): Promise<void> => {
   const i = S.ideas.find((x) => x.id === id);
   if (!i) return;
   const n = i.name.replace(/[^\w\u0600-\u06FF]+/g, '-');
-  t === 'md'
-    ? dl(n + '.md', toMD(i))
-    : dl(n + '.json', JSON.stringify(i, null, 2), 'application/json');
+  if (t === 'md') {
+    const proto = await store.getLatestPrototype(id);
+    dl(n + '.md', toMD(i, proto));
+  } else {
+    dl(n + '.json', JSON.stringify(i, null, 2), 'application/json');
+  }
 };
 
 export function openSettings(): void {

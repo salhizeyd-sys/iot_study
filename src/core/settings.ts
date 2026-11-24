@@ -43,7 +43,7 @@ export const FOCUS: Record<IdeaFocus, [string, string]> = {
 
 export const DEFAULT_FEATURES: FeatureFlags = {
   vault: true,
-  'iot.prototype': false,
+  'iot.prototype': true,
   'iot.dashboard': false,
   'iot.telemetry': false,
   'iot.flash': false,

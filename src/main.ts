@@ -3,8 +3,10 @@ import { registerSW } from 'virtual:pwa-register';
 import { bus, caps, registry } from './core';
 import { initStore, S } from './store';
 import { setupWindowGlobals, vaultModule, home } from './modules/vault';
+import { iotPrototypeModule } from './modules/iot/prototype';
 
 registry.register(vaultModule);
+registry.register(iotPrototypeModule);
 registry.bindToBus(bus, () => S.settings);
 
 setupWindowGlobals();

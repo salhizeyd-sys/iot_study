@@ -9,11 +9,11 @@ import {
 } from './index';
 
 describe('core architecture', () => {
-  it('enables only vault feature flag by default', () => {
+  it('enables only vault and iot.prototype feature flags in current milestone', () => {
     const settings = mergeSettings();
     expect(settings.features).toEqual(DEFAULT_FEATURES);
     expect(isFeatureEnabled(settings, 'vault')).toBe(true);
-    expect(isFeatureEnabled(settings, 'iot.prototype')).toBe(false);
+    expect(isFeatureEnabled(settings, 'iot.prototype')).toBe(true);
     expect(isFeatureEnabled(settings, 'iot.dashboard')).toBe(false);
     expect(isFeatureEnabled(settings, 'iot.telemetry')).toBe(false);
     expect(isFeatureEnabled(settings, 'iot.flash')).toBe(false);
@@ -33,8 +33,8 @@ describe('core architecture', () => {
       onEvent: vaultHandler,
     });
     reg.register({
-      id: 'iot.prototype',
-      enabled: (s) => isFeatureEnabled(s, 'iot.prototype'),
+      id: 'iot.dashboard',
+      enabled: (s) => isFeatureEnabled(s, 'iot.dashboard'),
       onEvent: iotHandler,
     });
 
