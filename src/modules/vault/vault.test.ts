@@ -11,8 +11,12 @@ import {
   setupWindowGlobals,
   toggleSpeech,
   discussIdea,
+  send,
+  refreshProjectMemory,
+  reviseProjectPlan,
   chat,
 } from './ui';
+import { mergeUpdatedPlan } from './logic';
 
 describe('mobile UI & quick capture', () => {
   beforeEach(() => {
@@ -123,5 +127,107 @@ describe('mobile UI & quick capture', () => {
     expect(cells[0].getAttribute('data-label')).toBe('العنصر');
     expect(cells[1].getAttribute('data-label')).toBe('الكمية');
     expect(cells[2].getAttribute('data-label')).toBe('ملاحظة');
+  });
+
+  it('preserves completed plan steps and records plan_history in mergeUpdatedPlan', () => {
+    const existing = [
+      { step: 'شراء ESP32', detail: 'DevKit', done: true },
+      { step: 'ربط الحساس', detail: 'مبدئي', done: false },
+    ];
+    const incoming = [
+      { step: 'شراء ESP32', detail: 'مكرر', },
+      { step: 'توصيل DHT22 على GPIO4', detail: 'مع مقاومة 10k' },
+      { step: 'إرسال القراءات', detail: 'كل 5 ثوانٍ' },
+    ];
+
+    const { nextPlan, historyEntry } = mergeUpdatedPlan(existing, incoming, 12345);
+    expect(historyEntry).toEqual({ savedAt: 12345, plan: existing });
+    expect(nextPlan).toEqual([
+      { step: 'شراء ESP32', detail: 'DevKit', done: true },
+      { step: 'توصيل DHT22 على GPIO4', detail: 'مع مقاومة 10k', done: false },
+      { step: 'إرسال القراءات', detail: 'كل 5 ثوانٍ', done: false },
+    ]);
+  });
+
+  it('discusses project with full context, updates idea.chat, memory, and revises plan', async () => {
+    S.settings.key = 'test-key';
+    S.settings.provider = 'openai';
+    S.ideas = [
+      {
+        id: 'proj-1',
+        schemaVersion: 3,
+        created: Date.now(),
+        name: 'عقدة ري ذكية',
+        domain: 'IoT',
+        type: 'hardware',
+        status: 'doing',
+        lifecycle: 'planned',
+        memory: 'تم اختيار صمام 12V.',
+        problem: 'سقي النباتات آلياً',
+        solution: 'حساس رطوبة تربة + ESP32',
+        focus: 'aligned',
+        focus_note: '',
+        skills: ['ESP32'],
+        duration: 'أسبوع',
+        plan: [
+          { step: 'تجهيز القطع', detail: 'ESP32', done: true },
+          { step: 'توصيل الصمام', detail: 'عبر ترانزستور', done: false },
+        ],
+        plan_history: [],
+        components: [{ name: 'Soil Sensor', qty: 1 }],
+        notes: 'استخدام تغذية خارجية 12V للصمام.',
+        chat: [],
+      },
+    ];
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'نعم، تغذية الصمام 12V خارجية عبر MOSFET.' } }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '- استخدام صمام 12V عبر MOSFET.' } }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: '{"plan":[{"step":"توصيل الصمام عبر MOSFET","detail":"GPIO5"}]}',
+              },
+            },
+          ],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    discussIdea('proj-1');
+    const inp = document.querySelector<HTMLTextAreaElement>('#inp')!;
+    inp.value = 'ما الجهد المناسب للصمام؟';
+    await send();
+
+    // Verify system prompt included project context (memory + notes)
+    const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(firstBody.messages[0].content).toContain('تم اختيار صمام 12V.');
+    expect(firstBody.messages[0].content).toContain('استخدام تغذية خارجية 12V للصمام.');
+    expect(S.ideas[0].chat).toHaveLength(2);
+
+    await refreshProjectMemory();
+    expect(S.ideas[0].memory).toBe('- استخدام صمام 12V عبر MOSFET.');
+
+    await reviseProjectPlan();
+    expect(S.ideas[0].plan_history).toHaveLength(1);
+    expect(S.ideas[0].plan).toEqual([
+      { step: 'تجهيز القطع', detail: 'ESP32', done: true },
+      { step: 'توصيل الصمام عبر MOSFET', detail: 'GPIO5', done: false },
+    ]);
+
+    vi.unstubAllGlobals();
   });
 });

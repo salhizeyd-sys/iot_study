@@ -6,6 +6,7 @@ import {
   IdeaLifecycle,
   IdeaStatus,
   IdeaType,
+  PlanHistoryEntry,
   PlanStep,
   Settings,
   FOCUS,
@@ -16,7 +17,7 @@ import {
 } from '../core';
 import { MigrationCapableStore, Store } from './types';
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 export const LEGACY_STORAGE_KEY = 'ideavault.v1';
 export const LEGACY_BACKUP_KEY = 'ideavault.v1.backup';
 
@@ -57,6 +58,19 @@ export function migrate(raw: unknown): Idea {
       }))
     : [];
 
+  const planHistory: PlanHistoryEntry[] = Array.isArray(r.plan_history)
+    ? r.plan_history
+        .filter((entry: any) => entry && Array.isArray(entry.plan))
+        .map((entry: any) => ({
+          savedAt: typeof entry.savedAt === 'number' ? entry.savedAt : Date.now(),
+          plan: entry.plan.map((p: any) => ({
+            step: typeof p?.step === 'string' ? p.step : String(p?.step ?? ''),
+            detail: typeof p?.detail === 'string' ? p.detail : String(p?.detail ?? ''),
+            done: Boolean(p?.done),
+          })),
+        }))
+    : [];
+
   const components: HardwareComponent[] = Array.isArray(r.components)
     ? r.components.map((c: any) => ({
         name: typeof c?.name === 'string' ? c.name : String(c?.name ?? ''),
@@ -82,6 +96,7 @@ export function migrate(raw: unknown): Idea {
     skills: rawSkills.map((s: any) => String(s ?? '')).filter(Boolean),
     duration: typeof r.duration === 'string' ? r.duration : '',
     plan,
+    plan_history: planHistory,
     components,
     notes: typeof r.notes === 'string' ? r.notes : '',
   };

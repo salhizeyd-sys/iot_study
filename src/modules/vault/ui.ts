@@ -19,16 +19,26 @@ import {
   save,
   statusToLifecycle,
 } from '../../store';
-import { callLLM } from '../../llm';
-import { sysChat, sysPlan } from '../../prompts';
+import {
+  buildProjectContext,
+  callLLM,
+  summarizeProjectMemory,
+} from '../../llm';
+import {
+  sysChat,
+  sysPlan,
+  sysProjectChat,
+  sysUpdatePlan,
+} from '../../prompts';
 import { dl, toMD, toPrompt } from '../../export';
 import { $, esc, toast } from '../../ui';
-import { filterIdeas, norm } from './logic';
+import { filterIdeas, mergeUpdatedPlan, norm } from './logic';
 import { SpeechSession, startSpeechDictation } from './speech';
 
 export const filt: FilterState = { q: '', type: '', domain: '' };
 export let chat: ChatMessage[] = [];
 let activeDraftId: string | null = null;
+let sessionNewMessages = 0;
 let busy = false;
 let speechSession: SpeechSession | null = null;
 
@@ -106,11 +116,12 @@ export function grid(): void {
 export function newIdea(draftId?: string, initialText?: string): void {
   setNavActive('new');
   activeDraftId = draftId || null;
+  sessionNewMessages = 0;
   const draft = draftId ? S.ideas.find((x) => x.id === draftId) : undefined;
   if (draft) {
     chat = draft.chat?.length
       ? draft.chat.map((m) => ({ ...m }))
-      : draft.problem
+      : !draft.plan?.length && draft.problem
         ? [{ role: 'user', content: draft.problem }]
         : [];
   } else {
@@ -119,15 +130,60 @@ export function newIdea(draftId?: string, initialText?: string): void {
 
   const app = $('#app');
   if (!app) return;
-  app.innerHTML = `<button class="btn g" onclick="home()">← الخزانة</button><h2>${
+
+  const isExistingWithPlan = Boolean(draft && (draft.plan?.length || 0) > 0);
+  const memoryBanner = draft?.memory?.trim()
+    ? `<div class="warn" id="memory-banner"><b>🧠 ذاكرة المشروع:</b> ${esc(draft.memory)}</div>`
+    : '';
+
+  const actionButtons = isExistingWithPlan
+    ? `<button class="btn" id="send" onclick="send()">إرسال</button>
+       <button class="btn g" id="revise" onclick="reviseProjectPlan()">✏️ عدّل الخطة</button>
+       <button class="btn g" id="mem-btn" onclick="refreshProjectMemory()">🧠 تحديث الذاكرة</button>`
+    : `<button class="btn" id="send" onclick="send()">إرسال</button>
+       <button class="btn g" id="fin" onclick="finalize()">حوّلها إلى خطة واحفظها</button>
+       ${draft ? '<button class="btn g" id="mem-btn" onclick="refreshProjectMemory()">🧠 تحديث الذاكرة</button>' : ''}`;
+
+  app.innerHTML = `<button class="btn g" onclick="exitDiscussion()">← الخزانة</button><h2>${
     draft ? esc(draft.name) : 'فكرة جديدة'
   }</h2>
+  ${memoryBanner}
   <div class="msgs" id="msgs"></div>
-  <textarea id="inp" rows="3" placeholder="اشرح فكرتك بحرية، والمساعد سيسألك ويختبرها معك.">${
-    initialText ? esc(initialText) : ''
-  }</textarea>
-  <div class="bar"><button class="btn" id="send" onclick="send()">إرسال</button><button class="btn g" id="fin" onclick="finalize()">حوّلها إلى خطة واحفظها</button></div>`;
+  <textarea id="inp" rows="3" placeholder="${
+    draft
+      ? 'اسأل المساعد عن أي تفصيل في المشروع أو اطلب تعديل الخطة…'
+      : 'اشرح فكرتك بحرية، والمساعد سيسألك ويختبرها معك.'
+  }">${initialText ? esc(initialText) : ''}</textarea>
+  <div class="bar">${actionButtons}</div>`;
   paint();
+}
+
+export async function exitDiscussion(): Promise<void> {
+  const projectId = activeDraftId;
+  const shouldSummarize = Boolean(projectId && sessionNewMessages > 0);
+  activeDraftId = null;
+  sessionNewMessages = 0;
+
+  if (shouldSummarize && projectId) {
+    const idea = S.ideas.find((x) => x.id === projectId);
+    const hasKeyOrLocal =
+      Boolean(S.settings.key) || /localhost|127\.0\.0\.1/.test(S.settings.base);
+    if (idea && hasKeyOrLocal) {
+      summarizeProjectMemory(idea, chat)
+        .then((summary) => {
+          if (summary) {
+            idea.memory = summary;
+            save(toast);
+            bus.emit('idea:updated', { ideaId: idea.id });
+          }
+        })
+        .catch(() => {
+          // Keep existing memory silently if offline or rate-limited
+        });
+    }
+  }
+
+  home();
 }
 
 export function paint(): void {
@@ -143,7 +199,7 @@ export async function guard(fn: () => Promise<void>): Promise<void> {
   if (busy) return;
   busy = true;
   document
-    .querySelectorAll<HTMLButtonElement>('#send,#fin')
+    .querySelectorAll<HTMLButtonElement>('#send,#fin,#revise,#mem-btn')
     .forEach((b) => (b.disabled = true));
   try {
     await fn();
@@ -152,7 +208,7 @@ export async function guard(fn: () => Promise<void>): Promise<void> {
   }
   busy = false;
   document
-    .querySelectorAll<HTMLButtonElement>('#send,#fin')
+    .querySelectorAll<HTMLButtonElement>('#send,#fin,#revise,#mem-btn')
     .forEach((b) => (b.disabled = false));
 }
 
@@ -165,15 +221,101 @@ export const send = () =>
     chat.push({ role: 'user', content: t });
     inp.value = '';
     paint();
+
+    const activeIdea = activeDraftId
+      ? S.ideas.find((x) => x.id === activeDraftId)
+      : undefined;
+    const systemPrompt = activeIdea
+      ? sysProjectChat(
+          buildProjectContext(activeIdea, {
+            tokenBudget: S.settings.contextBudget,
+          })
+        )
+      : sysChat();
+
     try {
-      const resp = await callLLM(chat, sysChat());
+      const resp = await callLLM(chat, systemPrompt);
       chat.push({ role: 'assistant', content: resp });
+      sessionNewMessages += 1;
+      if (activeIdea) {
+        activeIdea.chat = chat.slice();
+        save(toast);
+        bus.emit('idea:updated', { ideaId: activeIdea.id });
+      }
     } catch (e) {
       chat.pop();
       inp.value = t;
       throw e;
     }
     paint();
+  });
+
+export const refreshProjectMemory = () =>
+  guard(async () => {
+    if (!activeDraftId) return;
+    const idea = S.ideas.find((x) => x.id === activeDraftId);
+    if (!idea) return;
+    toast('جارٍ تحديث ذاكرة المشروع…');
+    const summary = await summarizeProjectMemory(idea, chat);
+    if (summary) {
+      idea.memory = summary;
+      idea.chat = chat.slice();
+      sessionNewMessages = 0;
+      save(toast);
+      bus.emit('idea:updated', { ideaId: idea.id });
+      const banner = $('#memory-banner');
+      if (banner) {
+        banner.innerHTML = `<b>🧠 ذاكرة المشروع:</b> ${esc(idea.memory)}`;
+      }
+      toast('تم تحديث ذاكرة المشروع');
+    }
+  });
+
+async function applyPlanRevision(idea: Idea, messages: ChatMessage[]): Promise<void> {
+  toast('جارٍ تعديل الخطة مع الحفاظ على الخطوات المنجزة…');
+  const ctx = buildProjectContext(idea, {
+    tokenBudget: S.settings.contextBudget,
+  });
+  const completedSteps = (idea.plan || []).filter((p) => p.done);
+  const r = await callLLM(
+    [
+      ...messages,
+      {
+        role: 'user',
+        content: 'عدّل الخطة المتبقية وأخرج JSON فقط بصيغة {"plan":[{"step":"","detail":""}]}.',
+      },
+    ],
+    sysUpdatePlan(ctx, completedSteps)
+  );
+  const m = r.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('لم يُرجع المساعد JSON صالحاً لتعديل الخطة');
+  const parsed = JSON.parse(m[0]);
+  const incoming = Array.isArray(parsed?.plan) ? parsed.plan : [];
+  const { nextPlan, historyEntry } = mergeUpdatedPlan(idea.plan || [], incoming);
+  idea.plan_history = [...(idea.plan_history || []), historyEntry];
+  idea.plan = nextPlan;
+  idea.chat = messages.slice();
+  save(toast);
+  bus.emit('idea:updated', { ideaId: idea.id });
+}
+
+export const reviseProjectPlan = () =>
+  guard(async () => {
+    if (!activeDraftId) return;
+    const idea = S.ideas.find((x) => x.id === activeDraftId);
+    if (!idea) return;
+    await applyPlanRevision(idea, chat);
+    toast('تم تعديل الخطة وحفظ النسخة السابقة');
+    openIdea(idea.id);
+  });
+
+export const reviseProjectPlanFromModal = (id: string) =>
+  guard(async () => {
+    const idea = S.ideas.find((x) => x.id === id);
+    if (!idea) return;
+    await applyPlanRevision(idea, idea.chat || []);
+    toast('تم تعديل الخطة وحفظ النسخة السابقة');
+    openIdea(id);
   });
 
 export const finalize = () =>
@@ -216,6 +358,7 @@ export const finalize = () =>
         status: 'idea',
         lifecycle: 'idea',
         memory: '',
+        plan_history: [],
         notes: '',
         chat: chat.slice(),
         ...normalized,
@@ -228,6 +371,7 @@ export const finalize = () =>
     save(toast);
     chat = [];
     activeDraftId = null;
+    sessionNewMessages = 0;
     home();
     openIdea(savedId);
   });
@@ -341,6 +485,7 @@ export function saveQuickDraft(): void {
     skills: [],
     duration: '',
     plan: [],
+    plan_history: [],
     components: [],
     notes: '',
     chat: rawText ? [{ role: 'user', content: rawText }] : [],
@@ -368,6 +513,7 @@ export function openIdea(id: string): void {
   if (!i) return;
   const f = FOCUS[i.focus] || ['غير محدد', 'wn'];
   const extraTabs = registry.getIdeaTabs(i, S.settings);
+  const historyCount = i.plan_history?.length || 0;
 
   dlg.innerHTML = `
   <div class="bar" style="justify-content:space-between"><h2 style="margin:0">${esc(
@@ -377,6 +523,13 @@ export function openIdea(id: string): void {
     i.duration ? `<span class="tag">${esc(i.duration)}</span>` : ''
   }
   ${i.focus_note ? `<p style="color:var(--mu);margin:6px 0">${esc(i.focus_note)}</p>` : ''}
+  ${
+    i.memory?.trim()
+      ? `<div class="warn"><b>🧠 ذاكرة المشروع:</b><div style="white-space:pre-wrap;margin-top:4px">${esc(
+          i.memory
+        )}</div></div>`
+      : ''
+  }
   <label>الحالة</label><select onchange="upd('${id}','status',this.value)">${Object.entries(
     STATUS
   )
@@ -393,7 +546,9 @@ export function openIdea(id: string): void {
           .join('')}</ul>`
       : ''
   }
-  <h2>خطة التنفيذ</h2>${(i.plan || [])
+  <h2>خطة التنفيذ${
+    historyCount ? ` <span class="tag">سجل التعديلات: ${historyCount}</span>` : ''
+  }</h2>${(i.plan || [])
     .map(
       (p, n) =>
         `<label class="step ${
@@ -404,7 +559,7 @@ export function openIdea(id: string): void {
           p.step
         )}</b><br>${esc(p.detail)}</span></label>`
     )
-    .join('') || '<p style="color:var(--mu)">لا خطة بعد — اضغط «ناقش هذه الفكرة» لتحويل المسودة إلى خطة.</p>'}
+    .join('') || '<p style="color:var(--mu)">لا خطة بعد — اضغط «ناقش هذا المشروع» لتحويل المسودة إلى خطة.</p>'}
   ${
     i.components && i.components.length
       ? `<h2>العناصر المطلوبة</h2><table class="responsive-table"><thead><tr><th>العنصر</th><th>الكمية</th><th>ملاحظة</th></tr></thead><tbody>${i.components
@@ -422,7 +577,12 @@ export function openIdea(id: string): void {
     i.notes
   )}</textarea>
   <div class="bar" style="margin-top:14px">
-    <button class="btn" onclick="discussIdea('${id}')">💬 ناقش هذه الفكرة</button>
+    <button class="btn" onclick="discussIdea('${id}')">💬 ناقش هذا المشروع</button>
+    ${
+      i.plan?.length
+        ? `<button class="btn g" onclick="reviseProjectPlanFromModal('${id}')">✏️ عدّل الخطة</button>`
+        : ''
+    }
     <button class="btn g" onclick="copyPrompt('${id}')">نسخ كبرومبت لمساعد آخر</button>
     <button class="btn g" onclick="exp('${id}','md')">تصدير .md</button>
     <button class="btn g" onclick="exp('${id}','json')">تصدير .json</button>
@@ -529,6 +689,9 @@ export function openSettings(): void {
   <label>الحد الأقصى للمشاريع قيد التنفيذ</label><input id="sx" type="number" min="1" value="${esc(
     s.maxDoing
   )}">
+  <label>ميزانية سياق المساعد (Tokens)</label><input id="scb" type="number" min="200" step="100" value="${esc(
+    s.contextBudget
+  )}">
   <label>لغة الإملاء الصوتي</label><select id="sl">
     <option value="ar-SA" ${s.speechLang === 'ar-SA' ? 'selected' : ''}>العربية (السعودية / عام - ar-SA)</option>
     <option value="ar-DZ" ${s.speechLang === 'ar-DZ' ? 'selected' : ''}>العربية (الجزائر - ar-DZ)</option>
@@ -555,6 +718,7 @@ export function saveSettings(): void {
   const sb = $('#sb') as HTMLInputElement | null;
   const sg = $('#sg') as HTMLTextAreaElement | null;
   const sx = $('#sx') as HTMLInputElement | null;
+  const scb = $('#scb') as HTMLInputElement | null;
   const sl = $('#sl') as HTMLSelectElement | null;
   const set = $('#set') as HTMLDialogElement | null;
 
@@ -566,6 +730,7 @@ export function saveSettings(): void {
     base: sb ? sb.value.trim() : '',
     goals: sg ? sg.value.trim() : '',
     maxDoing: sx ? +sx.value || 2 : 2,
+    contextBudget: scb ? +scb.value || 1600 : 1600,
     speechLang: sl ? sl.value : 'ar-SA',
   });
   save(toast);
@@ -612,8 +777,12 @@ export function setupWindowGlobals(): void {
   g.home = home;
   g.grid = grid;
   g.newIdea = newIdea;
+  g.exitDiscussion = exitDiscussion;
   g.paint = paint;
   g.send = send;
+  g.refreshProjectMemory = refreshProjectMemory;
+  g.reviseProjectPlan = reviseProjectPlan;
+  g.reviseProjectPlanFromModal = reviseProjectPlanFromModal;
   g.finalize = finalize;
   g.openIdea = openIdea;
   g.discussIdea = discussIdea;

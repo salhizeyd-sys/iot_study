@@ -3,6 +3,8 @@ import {
   Idea,
   IdeaFocus,
   IdeaType,
+  PlanHistoryEntry,
+  PlanStep,
   FOCUS,
   TYPES,
 } from '../../core';
@@ -41,4 +43,35 @@ export function filterIdeas(ideas: Idea[], filt: FilterState): Idea[] {
       (!filt.domain || i.domain === filt.domain) &&
       (!q || (i.name + i.problem + i.solution + i.domain).toLowerCase().includes(q))
   );
+}
+
+export function mergeUpdatedPlan(
+  existingPlan: PlanStep[],
+  incomingSteps: Array<{ step?: string; detail?: string }>,
+  now: number = Date.now()
+): { nextPlan: PlanStep[]; historyEntry: PlanHistoryEntry } {
+  const historyEntry: PlanHistoryEntry = {
+    savedAt: now,
+    plan: existingPlan.map((p) => ({ ...p })),
+  };
+
+  const completed = existingPlan.filter((p) => p.done).map((p) => ({ ...p }));
+  const completedKeys = new Set(completed.map((p) => p.step.trim().toLowerCase()));
+
+  const pending: PlanStep[] = [];
+  for (const raw of incomingSteps) {
+    const step = String(raw?.step ?? '').trim();
+    if (!step) continue;
+    if (completedKeys.has(step.toLowerCase())) continue;
+    pending.push({
+      step,
+      detail: String(raw?.detail ?? '').trim(),
+      done: false,
+    });
+  }
+
+  return {
+    nextPlan: [...completed, ...pending],
+    historyEntry,
+  };
 }

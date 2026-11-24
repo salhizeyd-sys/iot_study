@@ -1,3 +1,4 @@
+import { PlanStep } from '../core';
 import { S } from '../store';
 
 export const sysChat = (): string =>
@@ -14,3 +15,27 @@ export const sysPlan = (): string =>
 "focus":"aligned|partial|distraction","focus_note":"لماذا؟ بالنسبة لأهدافه: ${S.settings.goals}",
 "skills_needed":[""],"duration":"","plan":[{"step":"","detail":""}],"components":[{"name":"","qty":1,"note":""}]}
 اجعل components فارغة إن لم يكن هناك عتاد، وplan من 5 إلى 10 خطوات صغيرة قابلة للإنجاز.`;
+
+export const sysProjectChat = (projectContext: string): string =>
+  `أنت المساعد الهندسي الدائم لهذا المشروع لطالب ماستر أنظمة مدمجة. أهدافه التعليمية: ${S.settings.goals}.
+أنت تعرف كل تفاصيل المشروع المرفقة أدناه؛ اعتمد عليها مباشرة ولا تطلب من المستخدم إعادة ما ذُكر فيها.
+أجب بالعربية بوضوح واختصار عملي، وساعده على إنجاز الخطوة المتبقية التالية أو تعديل الخطة عند طلبه.
+
+=== سياق المشروع ===
+${projectContext}`;
+
+export const sysMemorySummary = (existingMemory: string): string =>
+  `لخّص القرارات الهندسية والتغييرات والقيود الجديدة من المحادثة في نقاط موجزة جداً بالعربية (لا تنسخ المحادثة حرفياً، أقصى حد 8 نقاط قصيرة).
+ادمج الملخص الجديد مع الذاكرة السابقة إن وجدت دون تكرار. أخرج نص الملخص فقط.
+${existingMemory ? `الذاكرة السابقة:\n${existingMemory}` : ''}`;
+
+export const sysUpdatePlan = (projectContext: string, completedSteps: PlanStep[]): string =>
+  `عدّل خطة التنفيذ بناءً على النقاش وسياق المشروع.
+قواعد صارمة:
+1. أخرج JSON صالحاً فقط بدون markdown أو شرح بالصيغة: {"plan":[{"step":"","detail":""}]}
+2. لا تكرر أو تلغِ الخطوات المنجزة التالية (ستُحفظ تلقائياً):
+${completedSteps.map((s) => `- ${s.step}`).join('\n') || '- (لا توجد خطوات منجزة بعد)'}
+3. أضف فقط الخطوات المتبقية والمعدّلة (3 إلى 8 خطوات واضحة قابلة للتنفيذ).
+
+=== سياق المشروع ===
+${projectContext}`;

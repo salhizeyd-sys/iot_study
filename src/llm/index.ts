@@ -1,5 +1,13 @@
-import { ChatMessage } from '../core';
+import { ChatMessage, Idea } from '../core';
 import { S } from '../store';
+import { sysMemorySummary } from '../prompts';
+
+export {
+  buildProjectContext,
+  estimateTokens,
+  DEFAULT_CONTEXT_TOKEN_BUDGET,
+  type ProjectContextOptions,
+} from './context';
 
 export async function callLLM(messages: ChatMessage[], system: string): Promise<string> {
   const { provider: p, key, model, base } = S.settings;
@@ -46,7 +54,6 @@ export async function callLLM(messages: ChatMessage[], system: string): Promise<
     return d.candidates[0].content.parts[0].text;
   }
 
-  // Default: OpenAI or OpenAI-compatible (Groq, Ollama, OpenRouter, etc.)
   r = await fetch(base.replace(/\/$/, '') + '/chat/completions', {
     method: 'POST',
     headers: {
@@ -61,4 +68,23 @@ export async function callLLM(messages: ChatMessage[], system: string): Promise<
   d = await r.json();
   if (!r.ok) throw new Error(d.error?.message || 'خطأ من المزوّد');
   return d.choices[0].message.content;
+}
+
+export async function summarizeProjectMemory(
+  idea: Idea,
+  recentMessages: ChatMessage[]
+): Promise<string> {
+  if (!recentMessages.length) return idea.memory || '';
+  const tail = recentMessages.slice(-12);
+  const summary = await callLLM(
+    [
+      ...tail,
+      {
+        role: 'user',
+        content: 'لخّص أهم القرارات والتغييرات للمشروع في نقاط مختصرة جداً.',
+      },
+    ],
+    sysMemorySummary(idea.memory || '')
+  );
+  return summary.trim().slice(0, 1500);
 }

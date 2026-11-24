@@ -59,6 +59,7 @@ export const DEFAULTS: Settings = {
   goals: 'تصميم الدوائر الإلكترونية، برمجة المتحكمات (MCU)، الذكاء الاصطناعي على الحافة (Edge AI)',
   maxDoing: 2,
   speechLang: 'ar-SA',
+  contextBudget: 1600,
   features: { ...DEFAULT_FEATURES },
 };
 
@@ -73,6 +74,10 @@ export function mergeSettings(partial?: Partial<Settings> | null): Settings {
     ...DEFAULTS,
     ...(partial || {}),
     speechLang: partial?.speechLang || DEFAULTS.speechLang,
+    contextBudget:
+      typeof partial?.contextBudget === 'number' && partial.contextBudget >= 200
+        ? partial.contextBudget
+        : DEFAULTS.contextBudget,
     features: {
       ...DEFAULT_FEATURES,
       ...(partial?.features || {}),

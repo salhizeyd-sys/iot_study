@@ -21,6 +21,24 @@ export interface PlanStep {
   done: boolean;
 }
 
+export interface PlanHistoryEntry {
+  savedAt: number;
+  plan: PlanStep[];
+}
+
+export interface PrototypeContextSummary {
+  revision: number;
+  boardFqbn: string;
+  wiringCount: number;
+  wiringPreview?: string[];
+  dashboardKeys: string[];
+}
+
+export interface DeviceContextSummary {
+  lastSeenAt?: number;
+  lastTelemetryKeys?: string[];
+}
+
 export interface HardwareComponent {
   name: string;
   qty: number;
@@ -49,6 +67,7 @@ export interface Idea {
   skills: string[];
   duration: string;
   plan: PlanStep[];
+  plan_history?: PlanHistoryEntry[];
   components: HardwareComponent[];
   notes: string;
   chat?: ChatMessage[];
@@ -73,6 +92,7 @@ export interface Settings {
   goals: string;
   maxDoing: number;
   speechLang: string;
+  contextBudget: number;
   features: FeatureFlags;
 }
 
