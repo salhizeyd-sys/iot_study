@@ -69,7 +69,6 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Payload must be a JSON object' }, 400);
   }
 
-  // Always use SUPABASE_SERVICE_ROLE_KEY exclusively to bypass RLS for device token verification & telemetry ingest
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       persistSession: false,
@@ -120,7 +119,23 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Device not found' }, 404);
   }
 
-  // Allow only keys declared in the idea's latest prototype dashboard
+  const bodyObj = parsedBody as Record<string, unknown>;
+  const nowIso = new Date(nowMs).toISOString();
+
+  // 1. Mark acknowledged commands from previous round-trip as executed
+  const ackIds = Array.isArray(bodyObj.ack_commands)
+    ? bodyObj.ack_commands.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : [];
+  if (ackIds.length > 0) {
+    await supabase
+      .from('iot_commands')
+      .update({ executed_at: nowIso })
+      .eq('device_id', deviceRow.id)
+      .in('id', ackIds)
+      .is('executed_at', null);
+  }
+
+  // 2. Allow only telemetry keys declared in the idea's latest prototype dashboard
   const { data: protoRow } = await supabase
     .from('idea_prototypes')
     .select('data')
@@ -137,29 +152,30 @@ Deno.serve(async (req: Request) => {
   );
 
   const filteredPayload: Record<string, number | boolean | string> = {};
-  for (const [k, v] of Object.entries(parsedBody as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(bodyObj)) {
+    if (k === 'ack_commands') continue;
     if (!allowedKeys.has(k)) continue;
     if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') {
       filteredPayload[k] = v;
     }
   }
 
-  if (Object.keys(filteredPayload).length === 0) {
+  if (Object.keys(filteredPayload).length === 0 && ackIds.length === 0) {
     return jsonResponse(
       { error: 'No allowed dashboard telemetry keys found in payload' },
       400
     );
   }
 
-  const nowIso = new Date(nowMs).toISOString();
-  const { error: insertErr } = await supabase.from('iot_telemetry').insert({
-    user_id: deviceRow.user_id,
-    device_id: deviceRow.id,
-    payload: filteredPayload,
-  });
-
-  if (insertErr) {
-    return jsonResponse({ error: insertErr.message }, 500);
+  if (Object.keys(filteredPayload).length > 0) {
+    const { error: insertErr } = await supabase.from('iot_telemetry').insert({
+      user_id: deviceRow.user_id,
+      device_id: deviceRow.id,
+      payload: filteredPayload,
+    });
+    if (insertErr) {
+      return jsonResponse({ error: insertErr.message }, 500);
+    }
   }
 
   await Promise.all([
@@ -167,9 +183,23 @@ Deno.serve(async (req: Request) => {
     supabase.from('device_tokens').update({ last_used_at: nowIso }).eq('id', tokenRow.id),
   ]);
 
+  // 3. Return unexecuted, unexpired commands for the ESP32 to act on
+  const { data: pendingCmds } = await supabase
+    .from('iot_commands')
+    .select('id, action, value, expires_at')
+    .eq('device_id', deviceRow.id)
+    .is('executed_at', null)
+    .gt('expires_at', nowIso)
+    .order('created_at', { ascending: true })
+    .limit(10);
+
   return jsonResponse({
     ok: true,
-    commands: [],
+    commands: (pendingCmds || []).map((c) => ({
+      id: c.id,
+      action: c.action,
+      value: c.value,
+    })),
     firmware: null,
   });
 });

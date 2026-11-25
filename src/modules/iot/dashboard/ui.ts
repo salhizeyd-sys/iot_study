@@ -1,12 +1,22 @@
-import { DashboardMode, DeviceRecord, Idea, bus } from '../../../core';
 import {
+  DashboardMode,
+  DeviceRecord,
+  Idea,
+  IoTCommandRecord,
+  bus,
+} from '../../../core';
+import {
+  getCommandStatus,
   isDeviceOnline,
+  listDeviceCommands,
   listDevicesForIdea,
   listRecentTelemetry,
+  sendDeviceCommand,
   store,
+  subscribeDeviceCommands,
   subscribeIdeaTelemetry,
 } from '../../../store';
-import { esc } from '../../../ui';
+import { esc, toast } from '../../../ui';
 import { SimulationController } from './simulator';
 import { renderDashboardWidgets, TelemetryHistory, TelemetryState } from './widgets';
 
@@ -19,13 +29,17 @@ export function renderDashboardTab(idea: Idea): HTMLElement {
   let controller: SimulationController | null = null;
   let unsubscribeBus: (() => void) | null = null;
   let unsubscribeLive: (() => void) | null = null;
+  let unsubscribeCommands: (() => void) | null = null;
   let liveDevices: DeviceRecord[] = [];
+  let liveCommands: IoTCommandRecord[] = [];
   let liveState: TelemetryState = {};
   let liveHistory: TelemetryHistory = {};
 
   function stopLiveSubscription() {
     unsubscribeLive?.();
     unsubscribeLive = null;
+    unsubscribeCommands?.();
+    unsubscribeCommands = null;
   }
 
   function cleanup() {
@@ -71,12 +85,17 @@ export function renderDashboardTab(idea: Idea): HTMLElement {
       liveDevices = await listDevicesForIdea(idea.id);
       liveState = {};
       liveHistory = {};
+      liveCommands = [];
       if (liveDevices.length) {
         const primaryDevice = liveDevices[0];
-        const recent = await listRecentTelemetry(primaryDevice.id, 20);
+        const [recent, cmds] = await Promise.all([
+          listRecentTelemetry(primaryDevice.id, 20),
+          listDeviceCommands(primaryDevice.id, 8),
+        ]);
         for (const r of recent) {
           pushLiveValues(r.payload || {});
         }
+        liveCommands = cmds;
       }
     }
 
@@ -111,6 +130,11 @@ export function renderDashboardTab(idea: Idea): HTMLElement {
       </div>
       <div class="dash-grid" data-role="widgets-host"></div>
       <div class="warn" style="font-size:13px" data-role="sim-state-line">الحالة المحلية: جاهزة</div>
+      ${
+        mode === 'live'
+          ? `<div class="card" style="cursor:default;margin-top:10px" data-role="commands-box"></div>`
+          : ''
+      }
     `;
 
     root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((btn) => {
@@ -171,6 +195,31 @@ export function renderDashboardTab(idea: Idea): HTMLElement {
         }
       });
     } else {
+      const renderCommandsList = () => {
+        const box = root.querySelector<HTMLElement>('[data-role="commands-box"]');
+        if (!box) return;
+        box.innerHTML = `
+          <b>🎛️ أوامر التحكم المرسلة للجهاز (${liveCommands.length})</b>
+          ${
+            liveCommands.length
+              ? `<ul style="margin-top:6px">${liveCommands
+                  .map((c) => {
+                    const st = getCommandStatus(c);
+                    const badge =
+                      st === 'executed'
+                        ? '<span class="tag ok">✅ نُفّذ</span>'
+                        : st === 'expired'
+                          ? '<span class="tag er">⌛ منتهي الصلاحية</span>'
+                          : '<span class="tag wn">⏳ قيد الانتظار</span>';
+                    return `<li><code>${esc(c.action)} = ${esc(
+                      JSON.stringify(c.value)
+                    )}</code> ${badge}</li>`;
+                  })
+                  .join('')}</ul>`
+              : '<p style="color:var(--mu);margin:4px 0 0">استخدم المفاتيح أو المنزلقات أعلاه لإرسال أمر للجهاز.</p>'
+          }`;
+      };
+
       const paintLive = () => {
         const pairs = Object.entries(liveState)
           .map(([k, v]) => `${k}=${String(v)}`)
@@ -184,21 +233,36 @@ export function renderDashboardTab(idea: Idea): HTMLElement {
           badge.textContent = onlineNow ? '🟢 جهاز متصل' : '⚪ بانتظار قراءة حية';
         }
 
+        renderCommandsList();
+
         renderDashboardWidgets(widgetsHost, dashboard, liveState, liveHistory, (key, val) => {
           liveState[key] = val;
-          bus.emit('telemetry:received', {
-            deviceId: liveDevices[0]?.id || '',
-            ideaId: idea.id,
-            payload: { [key]: val },
-            createdAt: Date.now(),
-          });
           paintLive();
+
+          const primary = liveDevices[0];
+          if (primary) {
+            void sendDeviceCommand(primary.id, key, val)
+              .then((created) => {
+                liveCommands = [
+                  created,
+                  ...liveCommands.filter((x) => x.id !== created.id),
+                ].slice(0, 8);
+                renderCommandsList();
+                toast(`أُرسل الأمر «${key}» للجهاز`);
+              })
+              .catch((err: any) => {
+                toast('⚠️ ' + (err?.message || 'تعذّر إرسال الأمر'));
+              });
+          } else {
+            toast('⚠️ سجّل جهازاً أولاً لإرسال أوامر التحكم');
+          }
         });
       };
 
       paintLive();
 
       if (liveDevices.length) {
+        const primaryDeviceId = liveDevices[0].id;
         unsubscribeLive = subscribeIdeaTelemetry(
           idea.id,
           liveDevices.map((d) => d.id),
@@ -214,6 +278,16 @@ export function renderDashboardTab(idea: Idea): HTMLElement {
             paintLive();
           }
         );
+
+        unsubscribeCommands = subscribeDeviceCommands(primaryDeviceId, (cmd) => {
+          const idx = liveCommands.findIndex((c) => c.id === cmd.id);
+          if (idx >= 0) {
+            liveCommands[idx] = cmd;
+          } else {
+            liveCommands = [cmd, ...liveCommands].slice(0, 8);
+          }
+          renderCommandsList();
+        });
       }
     }
   }

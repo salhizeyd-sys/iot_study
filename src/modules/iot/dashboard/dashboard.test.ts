@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Idea, PrototypeV1, Widget } from '../../../core';
 import * as supaClientMod from '../../../store/supabaseClient';
-import { store } from '../../../store';
+import { getCommandStatus, store } from '../../../store';
 import { SimulationController } from './simulator';
 import { renderDashboardTab } from './ui';
 import { renderDashboardWidgets } from './widgets';
@@ -158,13 +158,113 @@ describe('iot dashboard & simulator (S7)', () => {
     simBtn.click();
     expect(tabEl.querySelector('[data-role="sim-status"]')?.textContent).toContain('متوقفة');
 
-    // Switch to live Realtime mode cleanly
-    vi.spyOn(supaClientMod, 'getSupabaseClient').mockReturnValue(null);
+    // Switch to live Realtime mode cleanly and test sending iot_commands on toggle
+    const insertedCommands: any[] = [];
+    const fakeClient = {
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'u1' } } }),
+      },
+      from: (table: string) => {
+        if (table === 'devices') {
+          return {
+            select: () => ({
+              eq: () => ({
+                order: async () => ({
+                  data: [
+                    {
+                      id: 'dev-live-1',
+                      user_id: 'u1',
+                      idea_id: idea.id,
+                      name: 'ESP32',
+                      board: 'esp32:esp32:esp32',
+                      last_seen_at: new Date().toISOString(),
+                      created_at: new Date().toISOString(),
+                    },
+                  ],
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'iot_telemetry') {
+          return {
+            select: () => ({
+              eq: () => ({
+                order: () => ({
+                  limit: async () => ({ data: [], error: null }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'iot_commands') {
+          return {
+            select: () => ({
+              eq: () => ({
+                order: () => ({
+                  limit: async () => ({ data: [], error: null }),
+                }),
+              }),
+            }),
+            insert: (row: any) => {
+              const rec = {
+                id: 'cmd-1',
+                ...row,
+                executed_at: null,
+                created_at: new Date().toISOString(),
+              };
+              insertedCommands.push(rec);
+              return {
+                select: () => ({
+                  single: async () => ({ data: rec, error: null }),
+                }),
+              };
+            },
+          };
+        }
+        return {};
+      },
+      channel: () => ({
+        on: function () {
+          return this;
+        },
+        subscribe: () => ({}),
+      }),
+      removeChannel: async () => {},
+    };
+
+    vi.spyOn(supaClientMod, 'getSupabaseClient').mockReturnValue(fakeClient as any);
+    vi.spyOn(supaClientMod, 'getCurrentSupabaseUser').mockResolvedValue({ id: 'u1' } as any);
+
     tabEl.querySelector<HTMLButtonElement>('[data-mode="live"]')?.click();
     await vi.waitFor(() => {
       expect(tabEl.querySelector('[data-role="live-badge"]')).not.toBeNull();
-      expect(tabEl.querySelector('[data-role="sim-state-line"]')?.textContent).toContain('البث الحي');
+      expect(tabEl.querySelector('[data-role="commands-box"]')).not.toBeNull();
     });
+
+    tabEl.querySelector<HTMLButtonElement>('[data-control-type="toggle"]')?.click();
+    await vi.waitFor(() => {
+      expect(insertedCommands).toHaveLength(1);
+      expect(insertedCommands[0].action).toBe('led');
+      expect(insertedCommands[0].value).toBe(true);
+      expect(tabEl.querySelector('[data-role="commands-box"]')?.textContent).toContain('قيد الانتظار');
+    });
+
+    const now = 1_700_000_000_000;
+    expect(
+      getCommandStatus({ executed_at: null, expires_at: new Date(now + 60_000).toISOString() }, now)
+    ).toBe('pending');
+    expect(
+      getCommandStatus({ executed_at: null, expires_at: new Date(now - 1000).toISOString() }, now)
+    ).toBe('expired');
+    expect(
+      getCommandStatus(
+        { executed_at: new Date(now).toISOString(), expires_at: new Date(now - 1000).toISOString() },
+        now
+      )
+    ).toBe('executed');
+
     vi.restoreAllMocks();
   });
 });

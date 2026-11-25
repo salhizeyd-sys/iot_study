@@ -37,6 +37,7 @@ export {
 } from './supabase';
 export { SyncManager, type SyncStateSnapshot } from './sync';
 export {
+  DEFAULT_COMMAND_TTL_MS,
   getLastIssuedToken,
   sha256Hex,
   generateDeviceToken,
@@ -45,6 +46,10 @@ export {
   listDevicesForIdea,
   listRecentTelemetry,
   subscribeIdeaTelemetry,
+  getCommandStatus,
+  sendDeviceCommand,
+  listDeviceCommands,
+  subscribeDeviceCommands,
 } from './telemetry';
 
 export const store = new IndexedDBStore();

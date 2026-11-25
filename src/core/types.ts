@@ -227,6 +227,17 @@ export interface TelemetryReading {
 
 export type DashboardMode = 'simulation' | 'live';
 
+export interface IoTCommandRecord {
+  id: string;
+  user_id: string;
+  device_id: string;
+  action: string;
+  value: number | boolean | string | null;
+  executed_at: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
 export interface OutboxEntry {
   id: string;
   table: 'ideas' | 'idea_prototypes';

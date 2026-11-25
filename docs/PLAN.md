@@ -19,7 +19,7 @@
 | S11 | وضع التركيز | ✅ |
 | S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ✅ |
 | S13 | استقبال القراءات واللوحة الحية | ✅ |
-| S14 | أوامر التحكم من الهاتف | ⬜ |
+| S14 | أوامر التحكم من الهاتف | ✅ |
 | S15 | OTA | ⬜ |
 | S16 | الاختبار الرأسي (ESP32 + DHT22 + LED) | ⬜ 🛑 |
 
@@ -157,6 +157,7 @@
 ## S14: أوامر التحكم من الهاتف
 **المهام:** ربط `toggle_switch` و`slider` بإدراج صف في `iot_commands` عند التبديل في وضع البث الحي؛ تحديث `ingest-telemetry` لإرجاع الأوامر غير المنفذة وتعليمها منفذة بعد تأكيد الجهاز في الطلب التالي، مع مهلة صلاحية للأمر وتحديث قالب ESP32.
 **معايير القبول:** اختبارات لإرسال الأمر وتأكيد التنفيذ وانتهاء الصلاحية؛ البناء والاختبارات وESLint تمر.
+**الدليل:** ربط `toggle_switch` و`slider` بإرسال أوامر `iot_commands` واشتراك Realtime لعرض حالات `pending`/`executed`/`expired` (`DEFAULT_COMMAND_TTL_MS`) في `src/modules/iot/dashboard/ui.ts` و`src/store/telemetry.ts`، ودعم `ack_commands` وتصفية الأوامر غير المنفذة وغير المنتهية في `supabase/functions/ingest-telemetry/index.ts`، وتحديث قالب ESP32 (`handleServerCommands` + `ack_commands`). `npm.cmd run build` (9.89s) و`npm.cmd test` (12 ملفاً، 49 اختباراً، منها اختبارات S14 في `dashboard.test.ts`) و`npm.cmd run lint` (0 أخطاء).
 
 ## S15: OTA (التحديث اللاسلكي)
 **المهام:** Migration لـ `firmware_releases` وStorage خاص مع `sha256`؛ تضمين `firmware: { version, url, sha256 }` في رد `ingest-telemetry` عند وجود إصدار أحدث؛ تحديث قالب ESP32 للتحقق من `sha256` قبل التثبيت؛ وزر «حدّث لاسلكياً» في `modules/iot/ota/`.

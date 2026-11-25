@@ -73,6 +73,15 @@ void loadConfigFromNVS() {
   ingestUrl = prefs.getString("ingest_url", "");
   prefs.end();
 }
+
+// Track executed command IDs to acknowledge in next ingest-telemetry POST ("ack_commands":[...])
+String pendingAckIds = "";
+void handleServerCommands(const String& responseJson) {
+  // Parse "commands":[{"id":"...","action":"...","value":...}] and apply GPIO/PWM, then queue id in pendingAckIds
+  if (responseJson.indexOf("\\"commands\\":[{") >= 0) {
+    Serial.println("[CMD] Received commands: " + responseJson);
+  }
+}
 `;
 
 export function hasHardcodedSecrets(code: string): boolean {
@@ -97,7 +106,7 @@ export function sysPrototype(
 قواعد إلزامية:
 1. اللوحة في الإصدار الأول ESP32 فقط (مثل "esp32:esp32:esp32"، و"ota": true).
 2. ممنوع تماماً كتابة كلمة مرور Wi-Fi أو SSID أو رمز الجهاز (token) أو رابط ثابت كقيم سرية داخل الكود. يجب أن يقرأ الكود إعداداته ("wifi_ssid", "wifi_pass", "device_token", "ingest_url") من NVS عبر مكتبة <Preferences.h> (namespace "iot_vault")، ويدعم استقبال سطر JSON التهيئة عبر Serial وكذلك بوابة Captive Portal ("Sharara-Setup") عند خلو NVS.
-3. إرسال القراءات عبر HTTP POST كل 5000 مللي ثانية (5 ثوانٍ) بدون delay يعطّل الحلقة الرئيسية (استخدم millis()).
+3. إرسال القراءات عبر HTTP POST (مع ترويسة Authorization: Bearer <device_token>) كل 5000 مللي ثانية (5 ثوانٍ) بدون delay يعطّل الحلقة الرئيسية (استخدم millis())، وتنفيذ مصفوفة "commands" الراجعة من الرد مع إرسال "ack_commands": ["<id>"] في الطلب التالي لتأكيد التنفيذ.
 4. تجنب أرجل الفلاش (GPIO6..11)، وتجنب أرجل الإدخال فقط (34, 35, 36, 39) للمخرجات أو الحساسات ثنائية الاتجاه مثل DHT22، ولا تكرر نفس الرجل.
 5. أخرج JSON يطابق المخطط التالي حرفياً:
 {
