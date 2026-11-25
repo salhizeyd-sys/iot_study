@@ -64,9 +64,9 @@ export function renderTelemetryTab(idea: Idea): HTMLElement {
           oneTimeToken
             ? `<div class="warn" data-role="one-time-token" style="margin-top:10px;border-color:var(--wn)">
                 <b>⚠️ رمز الجهاز (يُعرض مرة واحدة فقط — احفظه أو هيّئه الآن):</b>
-                <pre dir="ltr" style="margin:6px 0;padding:8px;background:var(--bg);border-radius:8px;font-size:12px">${esc(
+                <pre dir="ltr" style="margin:6px 0;padding:8px;background:var(--bg);border-radius:8px;font-size:12px"><code data-role="token-value" style="user-select:all">${esc(
                   oneTimeToken
-                )}</pre>
+                )}</code></pre>
                 <button type="button" class="btn g" data-action="copy-token">📋 نسخ الرمز</button>
               </div>`
             : ''
@@ -119,7 +119,7 @@ export function renderTelemetryTab(idea: Idea): HTMLElement {
       if (btn) btn.disabled = true;
       try {
         const res = await registerDeviceForIdea(idea.id, nameInput?.value || 'ESP32');
-        oneTimeToken = res.rawToken;
+        oneTimeToken = res.rawToken.trim();
         toast('تم تسجيل الجهاز — انسخ الرمز الآن');
         await loadAll();
       } catch (err: any) {

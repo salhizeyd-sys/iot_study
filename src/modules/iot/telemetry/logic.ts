@@ -1,6 +1,21 @@
 export const MAX_TELEMETRY_BYTES = 4096;
 export const TELEMETRY_RATE_LIMIT_MS = 2000;
 
+export function extractBearerToken(authorizationHeader: string | null): string {
+  if (!authorizationHeader) return '';
+  return authorizationHeader.replace(/^Bearer\s+/i, '').trim();
+}
+
+export async function computeTokenSha256Hex(rawToken: string): Promise<string> {
+  const clean = rawToken.trim();
+  const bytes = new TextEncoder().encode(clean);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toLowerCase();
+}
+
 export function filterTelemetryPayload(
   raw: unknown,
   allowedKeys: Set<string>

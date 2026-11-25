@@ -26,7 +26,8 @@ async function sha256Hex(raw: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+    .join('')
+    .toLowerCase();
 }
 
 Deno.serve(async (req: Request) => {
@@ -43,9 +44,12 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Server environment not configured' }, 500);
   }
 
-  const authHeader = req.headers.get('Authorization') || '';
-  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  const rawToken = bearer || (req.headers.get('x-device-token') || '').trim();
+  const authRaw = req.headers.get('authorization');
+  const bearerToken = authRaw
+    ? authRaw.replace(/^Bearer\s+/i, '').trim()
+    : '';
+  const headerToken = (req.headers.get('x-device-token') || '').trim();
+  const rawToken = (bearerToken || headerToken).replace(/^["']|["']$/g, '').trim();
   if (!rawToken) {
     return jsonResponse({ error: 'Missing device token' }, 401);
   }
@@ -65,8 +69,18 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Payload must be a JSON object' }, 400);
   }
 
+  // Always use SUPABASE_SERVICE_ROLE_KEY exclusively to bypass RLS for device token verification & telemetry ingest
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+    },
   });
 
   const tokenHash = await sha256Hex(rawToken);
@@ -77,7 +91,12 @@ Deno.serve(async (req: Request) => {
     .eq('revoked', false)
     .maybeSingle();
 
-  if (tokenErr || !tokenRow) {
+  if (tokenErr) {
+    console.error('device_tokens lookup failed:', tokenErr.message);
+    return jsonResponse({ error: `Token lookup failed: ${tokenErr.message}` }, 500);
+  }
+
+  if (!tokenRow) {
     return jsonResponse({ error: 'Invalid or revoked device token' }, 401);
   }
 
