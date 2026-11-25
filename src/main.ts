@@ -10,10 +10,12 @@ import {
 } from './modules/vault';
 import { iotPrototypeModule } from './modules/iot/prototype';
 import { iotDashboardModule } from './modules/iot/dashboard';
+import { iotFlashModule } from './modules/iot/flash';
 
 registry.register(vaultModule);
 registry.register(iotPrototypeModule);
 registry.register(iotDashboardModule);
+registry.register(iotFlashModule);
 registry.bindToBus(bus, () => S.settings);
 
 setupWindowGlobals();

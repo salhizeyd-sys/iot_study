@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "compile-local": "node scripts/compile-local/server.mjs"
   },
   "devDependencies": {
     "eslint": "^10.15.0",
@@ -22,6 +23,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.2",
+    "esptool-js": "^0.7.1",
     "idb": "^8.0.4",
     "monaco-editor": "^0.58.0",
     "zod": "^4.6.7"

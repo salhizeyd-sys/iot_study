@@ -660,9 +660,8 @@ html[dir="rtl"] #dlg[open] {
 
 .idea-tabs {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(125px, 46%), 1fr));
+  gap: 6px;
   margin-top: 10px;
 }
 

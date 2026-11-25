@@ -86,11 +86,28 @@ export function home(): void {
   const app = $('#app');
   if (!app) return;
   const doing = S.ideas.filter((i) => i.status === 'doing').length;
+  const readyToFlash = caps.webSerial
+    ? S.ideas.filter((i) => i.lifecycle === 'ready_to_flash')
+    : [];
   const max = +S.settings.maxDoing || 2;
   const domains = [...new Set(S.ideas.map((i) => i.domain))];
 
   app.innerHTML = `
   <div>${S.ideas.length} فكرة · ${doing} قيد التنفيذ</div>
+  ${
+    readyToFlash.length
+      ? `<div class="warn" id="handoff-banner">🔌 <b>جاهز للرفع عبر USB (${
+          readyToFlash.length
+        }):</b> ${readyToFlash
+          .map(
+            (r) =>
+              `<button type="button" class="btn g" style="min-height:36px;padding:4px 10px" onclick="openIdea('${r.id}','flash')">${esc(
+                r.name
+              )}</button>`
+          )
+          .join(' ')}</div>`
+      : ''
+  }
   ${
     doing > max
       ? `<div class="warn">⚠️ عندك ${doing} مشاريع قيد التنفيذ والحد الذي وضعته ${max}. أنهِ أو أوقف مشروعاً قبل أن تبدأ غيره.</div>`
@@ -123,7 +140,11 @@ export function grid(): void {
         return `<div class="card ${i.type}" tabindex="0" onclick="openIdea('${i.id}')" onkeydown="if(event.key==='Enter')openIdea('${i.id}')">
     <h3>${esc(i.name)}</h3><span class="tag">${esc(i.domain)}</span><span class="tag">${
           TYPES[i.type] || i.type
-        }</span><span class="tag ${f[1]}">${f[0]}</span>
+        }</span><span class="tag ${f[1]}">${f[0]}</span>${
+          i.lifecycle === 'ready_to_flash'
+            ? '<span class="tag ok">🔌 جاهز للرفع</span>'
+            : ''
+        }
     <p>${STATUS[i.status] || i.status} · ${d}/${(i.plan || []).length} خطوات</p></div>`;
       })
       .join('') ||

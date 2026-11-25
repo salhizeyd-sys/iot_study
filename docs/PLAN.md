@@ -17,7 +17,7 @@
 | S9 | Supabase: حساب + مزامنة | ✅ |
 | S10 | llm-proxy (إخفاء مفتاح الـ AI) | ✅ |
 | S11 | وضع التركيز | ✅ |
-| S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ⬜ 🛑 |
+| S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ⏳ 🛑 بانتظار التحقق اليدوي |
 | S13 | استقبال القراءات واللوحة الحية | ⬜ 🛑 |
 | S14 | أوامر التحكم من الهاتف | ⬜ |
 | S15 | OTA | ⬜ |
@@ -131,7 +131,16 @@
 
 # M3: الحاسوب (بعد نجاح M2)
 
-- **S12 🛑** `scripts/compile-local` + رفع Web Serial + تهيئة الواي فاي والرمز + Serial Monitor + «جاهز للرفع». التفاصيل: PROMPTS_V3 الخطوة 9. *🛑 توصيل ESP32 بالحاسوب.*
+## S12: حاسوب: ترجمة محلية + رفع + تهيئة + Serial Monitor 🛑
+**المهام:**
+1. `scripts/compile-local`: خادم Node محلي يغلّف `arduino-cli` (`GET /health`, `POST /compile` مع CORS وPrivate Network Access) ويرجع ملفات `.bin` وإزاحاتها.
+2. `src/modules/iot/flash/` (متكيّف بـ `caps.webSerial`):
+   - على الحاسوب (`caps.webSerial`): مراجعة إجبارية للتحذيرات وفاحص الأرجل، ترجمة محلية، رفع عبر USB بـ `esptool-js` (تحميل كسول)، تهيئة الواي فاي والرمز عبر Web Serial إلى Preferences/NVS (دون حفظ كلمة مرور الواي فاي في أي خادم)، وSerial Monitor حي داخل الواجهة.
+   - على الهاتف (`!caps.webSerial`): زر «🚀 جاهز للرفع» يضبط `lifecycle = 'ready_to_flash'` ويظهر مشروعك على الحاسوب كجاهز للرفع.
+3. تحديث قالب ESP32 بإضافة مستمع التهيئة عبر Serial وبوابة Captive Portal عند خلو NVS.
+**معايير القبول (المساعد):** اختبارات لـ `scripts/compile-local` (تحضير الملفات وتسمية `.ino` والإزاحات)، ولحارس المراجعة الإجبارية وتنسيق سطر JSON للتهيئة ومنطق التسليم `ready_to_flash`؛ `npm run build` و`npm test` و`npm run lint` تمر.
+**دليل المساعد:** أُنشئ الخادم المحلي في `scripts/compile-local/server.mjs` و`lib.mjs`؛ ونُقلت دالة فحص أرجل ESP32 إلى `src/core/esp32.ts` لمنع الاستيراد بين الوحدات؛ وأُنشئت وحدة `src/modules/iot/flash/` (مراجعة إجبارية، ترجمة محلية، رفع `esptool-js` كسول، تهيئة NVS عبر Web Serial، Serial Monitor، وتسليم `ready_to_flash` للهاتف) مع تحديث قالب Captive Portal والتهيئة التسلسلية في `template.ts`؛ `npm.cmd run build` نجح في `10.13s`؛ `npm.cmd test` مرّ بـ `45/45` اختباراً (منها 4 اختبارات في `src/modules/iot/flash/flash.test.ts`)؛ `npm.cmd run lint` مرّ بـ `0` أخطاء.
+**🛑 يدوياً:** ثبّت `arduino-cli` ونواة `esp32:esp32`، شغّل `npm run compile-local`، وصّل ESP32 عبر USB بالحاسوب، ثم راجع وترجم وارفع وهيّئ الواي فاي وراقب الإقلاع في Serial Monitor.
 
 # M4: الحقل (بعد نجاح M3)
 
