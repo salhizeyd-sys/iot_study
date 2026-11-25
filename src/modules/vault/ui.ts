@@ -9,6 +9,7 @@ import {
   TYPES,
   bus,
   caps,
+  isFeatureEnabled,
   mergeSettings,
   registry,
 } from '../../core';
@@ -42,6 +43,15 @@ import {
 import { dl, toMD, toPrompt } from '../../export';
 import { $, esc, toast } from '../../ui';
 import { filterIdeas, mergeUpdatedPlan, norm } from './logic';
+import {
+  COOLDOWN_MS,
+  bypassCooldown,
+  computeFocusBreakdown,
+  getCooldownRemaining,
+  getDoingOverflow,
+  getNextUncompletedStep,
+  isInCooldown,
+} from './focus';
 import { SpeechSession, startSpeechDictation } from './speech';
 
 export const filt: FilterState = { q: '', type: '', domain: '' };
@@ -53,7 +63,7 @@ let sessionNewMessages = 0;
 let busy = false;
 let speechSession: SpeechSession | null = null;
 
-function setNavActive(name: 'home' | 'new' | 'quick' | 'settings'): void {
+function setNavActive(name: 'home' | 'focus' | 'new' | 'quick' | 'settings'): void {
   document.querySelectorAll<HTMLButtonElement>('.bottom-nav button').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.nav === name);
   });
@@ -385,12 +395,15 @@ export const finalize = () =>
       savedId = existing.id;
       bus.emit('idea:updated', { ideaId: savedId });
     } else {
+      const focusEnabled = isFeatureEnabled(S.settings, 'focus');
+      const now = Date.now();
       const idea: Idea = {
         id: crypto.randomUUID(),
         schemaVersion: CURRENT_SCHEMA_VERSION,
-        created: Date.now(),
+        created: now,
         status: 'idea',
-        lifecycle: 'idea',
+        lifecycle: focusEnabled ? 'cooldown' : 'idea',
+        cooldown_until: focusEnabled ? now + COOLDOWN_MS : undefined,
         memory: '',
         plan_history: [],
         notes: '',
@@ -602,6 +615,22 @@ export function openIdea(id: string, requestedTabId?: string): void {
             )}</div></div>`
           : ''
       }
+      ${
+        isInCooldown(i)
+          ? `<div class="warn" id="cooldown-banner">
+              <b>🧊 فترة التبريد (7 أيام):</b> متبقي <b>${esc(
+                getCooldownRemaining(i).formatted
+              )}</b> لتفادي التشتت.
+              <div class="bar" style="margin-bottom:0">
+                <button type="button" class="btn g" onclick="openBypassCooldown('${id}')">⚡ تجاوز التبريد</button>
+              </div>
+            </div>`
+          : i.cooldown_bypass_reason
+            ? `<p style="color:var(--mu);font-size:13px">تم تجاوز التبريد — السبب: ${esc(
+                i.cooldown_bypass_reason
+              )}</p>`
+            : ''
+      }
       <label>الحالة</label><select onchange="upd('${id}','status',this.value)">${Object.entries(
         STATUS
       )
@@ -723,6 +752,20 @@ export const copyPrompt = async (id: string): Promise<void> => {
 export const upd = (id: string, k: keyof Idea, v: any): void => {
   const item = S.ideas.find((x) => x.id === id);
   if (!item) return;
+
+  if (k === 'status' && v === 'doing' && isFeatureEnabled(S.settings, 'focus')) {
+    const max = +S.settings.maxDoing || 2;
+    const overflow = getDoingOverflow(S.ideas, id, max);
+    if (overflow.length > 0) {
+      const dlg = $('#dlg') as HTMLDialogElement | null;
+      if (dlg?.open) {
+        openIdea(id, 'plan');
+      }
+      openMaxDoingModal(id, overflow);
+      return;
+    }
+  }
+
   (item as any)[k] = v;
   if (k === 'status') {
     const newStatus = v as IdeaStatus;
@@ -805,6 +848,276 @@ export function renderSyncPill(snap: SyncStateSnapshot): void {
     pill.textContent = '🔴 تعذّر التزامن';
   } else {
     pill.textContent = '⚪ محلي';
+  }
+}
+
+export function openMaxDoingModal(targetId: string, activeIdeas: Idea[]): void {
+  const fdlg = $('#focus-dlg') as HTMLDialogElement | null;
+  const target = S.ideas.find((x) => x.id === targetId);
+  if (!fdlg || !target) return;
+  const max = +S.settings.maxDoing || 2;
+
+  fdlg.innerHTML = `
+  <div class="bar" style="justify-content:space-between">
+    <h2 style="margin:0">⚠️ تجاوز حد المشاريع النشطة (${max})</h2>
+    <button type="button" class="btn g" onclick="document.getElementById('focus-dlg').close()" aria-label="إغلاق">✕</button>
+  </div>
+  <p>لتفعيل مشروع <b>«${esc(target.name)}»</b>، اختر مشروعاً نشطاً لإيقافه مؤقتاً:</p>
+  <div class="bar" style="flex-direction:column;align-items:stretch">
+    ${activeIdeas
+      .map(
+        (a) =>
+          `<button type="button" class="btn g" data-pause-id="${esc(
+            a.id
+          )}" onclick="switchDoingProject('${a.id}','${targetId}')">⏸️ إيقاف «${esc(
+            a.name
+          )}» وتفعيل الجديد</button>`
+      )
+      .join('')}
+  </div>`;
+
+  if (typeof fdlg.showModal === 'function') {
+    fdlg.showModal();
+  }
+}
+
+export function switchDoingProject(pauseId: string, activateId: string): void {
+  const toPause = S.ideas.find((x) => x.id === pauseId);
+  const toActivate = S.ideas.find((x) => x.id === activateId);
+  if (!toPause || !toActivate) return;
+
+  toPause.status = 'paused';
+  toActivate.status = 'doing';
+  toActivate.lifecycle = 'planned';
+  if (toActivate.cooldown_until && toActivate.cooldown_until > Date.now()) {
+    toActivate.cooldown_until = 0;
+  }
+
+  save(toast);
+  bus.emit('idea:status-changed', {
+    ideaId: pauseId,
+    status: 'paused',
+    lifecycle: toPause.lifecycle,
+  });
+  bus.emit('idea:status-changed', {
+    ideaId: activateId,
+    status: 'doing',
+    lifecycle: toActivate.lifecycle,
+  });
+
+  const fdlg = $('#focus-dlg') as HTMLDialogElement | null;
+  if (fdlg && typeof fdlg.close === 'function') fdlg.close();
+
+  const dlg = $('#dlg') as HTMLDialogElement | null;
+  if (dlg?.open) {
+    openIdea(activateId, 'plan');
+  } else if (document.getElementById('focus-page')) {
+    focusView();
+  } else {
+    home();
+  }
+  toast(`تم إيقاف «${toPause.name}» وتفعيل «${toActivate.name}»`);
+}
+
+export function openBypassCooldown(id: string): void {
+  const fdlg = $('#focus-dlg') as HTMLDialogElement | null;
+  const idea = S.ideas.find((x) => x.id === id);
+  if (!fdlg || !idea) return;
+
+  fdlg.innerHTML = `
+  <div class="bar" style="justify-content:space-between">
+    <h2 style="margin:0">⚡ تجاوز فترة التبريد</h2>
+    <button type="button" class="btn g" onclick="document.getElementById('focus-dlg').close()" aria-label="إغلاق">✕</button>
+  </div>
+  <p>الفكرة <b>«${esc(idea.name)}»</b> في فترة تبريد 7 أيام لتجنب التشتت. لماذا تحتاج البدء بها الآن؟</p>
+  <label for="bypass-reason">سبب التجاوز (إلزامي)</label>
+  <textarea id="bypass-reason" rows="3" placeholder="مثال: مشروع مادة التخرج والموعد النهائي هذا الأسبوع…"></textarea>
+  <div class="bar">
+    <button type="button" class="btn" onclick="confirmBypassCooldown('${id}')">تأكيد التجاوز</button>
+    <button type="button" class="btn g" onclick="document.getElementById('focus-dlg').close()">إلغاء</button>
+  </div>`;
+
+  if (typeof fdlg.showModal === 'function') {
+    fdlg.showModal();
+  }
+}
+
+export function confirmBypassCooldown(id: string): void {
+  const idea = S.ideas.find((x) => x.id === id);
+  const reasonEl = $('#bypass-reason') as HTMLTextAreaElement | null;
+  if (!idea) return;
+
+  try {
+    const updated = bypassCooldown(idea, reasonEl?.value || '');
+    Object.assign(idea, updated);
+    save(toast);
+    bus.emit('idea:status-changed', {
+      ideaId: id,
+      status: idea.status,
+      lifecycle: idea.lifecycle,
+    });
+    const fdlg = $('#focus-dlg') as HTMLDialogElement | null;
+    if (fdlg && typeof fdlg.close === 'function') fdlg.close();
+
+    const dlg = $('#dlg') as HTMLDialogElement | null;
+    if (dlg?.open) {
+      openIdea(id, 'plan');
+    } else if (document.getElementById('focus-page')) {
+      focusView();
+    } else {
+      home();
+    }
+    toast('تم تجاوز فترة التبريد');
+  } catch (e: any) {
+    toast('⚠️ ' + (e?.message || 'أدخل سبباً صالحاً'));
+  }
+}
+
+export function focusView(): void {
+  if (!isFeatureEnabled(S.settings, 'focus')) {
+    home();
+    return;
+  }
+  setNavActive('focus');
+  const app = $('#app');
+  if (!app) return;
+
+  const breakdown = computeFocusBreakdown(S.ideas);
+  const activeProjects = S.ideas.filter((i) => i.status === 'doing');
+  const primary = activeProjects[0];
+  const readyPlanned = S.ideas.filter(
+    (i) => (i.status === 'planned' || i.status === 'idea') && !isInCooldown(i)
+  );
+  const cooldownIdeas = S.ideas.filter((i) => isInCooldown(i));
+
+  let activeHtml = '';
+  if (primary) {
+    const progress = getNextUncompletedStep(primary);
+    activeHtml = `
+      <div class="focus-card">
+        <div class="bar" style="justify-content:space-between;margin-top:0">
+          <div>
+            <span class="tag ok">المشروع النشط الآن</span>
+            <span class="tag">${esc(primary.domain)}</span>
+          </div>
+          <span>${progress.doneCount}/${progress.totalCount} (${progress.percent}%)</span>
+        </div>
+        <h2 style="margin:6px 0">${esc(primary.name)}</h2>
+        <div class="progress-track"><div class="progress-fill" style="width:${progress.percent}%"></div></div>
+        ${
+          progress.step
+            ? `<div class="focus-next-step">
+                <div style="font-size:12px;color:var(--mu)">الخطوة التالية غير المكتملة:</div>
+                <div><b>${esc(progress.step.step)}</b></div>
+                ${progress.step.detail ? `<div style="font-size:13px">${esc(progress.step.detail)}</div>` : ''}
+                <div class="bar" style="margin-bottom:0">
+                  <button type="button" class="btn" onclick="completeNextFocusStep('${primary.id}')">✓ أنجزت هذه الخطوة</button>
+                  <button type="button" class="btn g" onclick="openIdea('${primary.id}')">فتح المشروع</button>
+                </div>
+              </div>`
+            : `<div class="focus-next-step">
+                <b>🎉 أنجزت كل خطوات الخطة!</b>
+                <div class="bar" style="margin-bottom:0">
+                  <button type="button" class="btn" onclick="upd('${primary.id}','status','done');focusView()">وضع كمكتمل</button>
+                  <button type="button" class="btn g" onclick="openIdea('${primary.id}')">فتح المشروع</button>
+                </div>
+              </div>`
+        }
+        ${
+          activeProjects.length > 1
+            ? `<p style="font-size:13px;color:var(--mu);margin:8px 0 0">يوجد ${
+                activeProjects.length - 1
+              } مشروع نشط إضافي في الخزانة.</p>`
+            : ''
+        }
+      </div>`;
+  } else {
+    activeHtml = `
+      <div class="focus-card">
+        <h2 style="margin-top:0">لا يوجد مشروع قيد التنفيذ حالياً</h2>
+        <p style="color:var(--mu)">اختر مشروعاً واحداً لتركّز عليه الآن وتكمله حتى النهاية:</p>
+        ${
+          readyPlanned.length
+            ? readyPlanned
+                .slice(0, 4)
+                .map(
+                  (r) => `<div class="bar" style="justify-content:space-between;border-top:1px solid var(--bd);padding-top:8px">
+                    <span><b>${esc(r.name)}</b> <span class="tag">${esc(r.domain)}</span></span>
+                    <button type="button" class="btn" onclick="startProjectFromFocus('${r.id}')">▶ ابدأ التنفيذ</button>
+                  </div>`
+                )
+                .join('')
+            : '<p style="color:var(--mu)">أضف فكرة جديدة أو تجاوز فترة التبريد لبدء مشروع.</p>'
+        }
+      </div>`;
+  }
+
+  const ratioHtml = `
+    <div class="card" style="cursor:default;margin-bottom:12px">
+      <div class="bar" style="justify-content:space-between;margin:0">
+        <b>📊 شريط نسب التوافق مع أهدافي</b>
+        <span style="font-size:13px;color:var(--mu)">${breakdown.total} فكرة</span>
+      </div>
+      <div class="focus-ratio-bar" aria-label="نسب التوافق">
+        <div class="focus-seg ok" style="width:${breakdown.aligned.pct}%"></div>
+        <div class="focus-seg wn" style="width:${breakdown.partial.pct}%"></div>
+        <div class="focus-seg er" style="width:${breakdown.distraction.pct}%"></div>
+      </div>
+      <div class="bar" style="margin:6px 0 0;font-size:13px">
+        <span class="tag ok">ضمن تخصصي: ${breakdown.aligned.count} (${breakdown.aligned.pct}%)</span>
+        <span class="tag wn">تعلم جانبي: ${breakdown.partial.count} (${breakdown.partial.pct}%)</span>
+        <span class="tag er">تشتيت: ${breakdown.distraction.count} (${breakdown.distraction.pct}%)</span>
+      </div>
+    </div>`;
+
+  const cooldownHtml = `
+    <div class="card" style="cursor:default">
+      <b>🧊 أفكار في فترة التبريد (7 أيام)</b>
+      ${
+        cooldownIdeas.length
+          ? cooldownIdeas
+              .map((c) => {
+                const rem = getCooldownRemaining(c);
+                return `<div class="bar" style="justify-content:space-between;border-top:1px solid var(--bd);padding-top:8px">
+                  <div>
+                    <div><b>${esc(c.name)}</b></div>
+                    <div style="font-size:13px;color:var(--mu)">متبقي: ${esc(rem.formatted)}</div>
+                  </div>
+                  <div class="bar" style="margin:0">
+                    <button type="button" class="btn g" onclick="openBypassCooldown('${c.id}')">⚡ تجاوز</button>
+                    <button type="button" class="btn g" onclick="openIdea('${c.id}')">عرض</button>
+                  </div>
+                </div>`;
+              })
+              .join('')
+          : '<p style="color:var(--mu)">لا توجد أفكار في فترة التبريد حالياً.</p>'
+      }
+    </div>`;
+
+  app.innerHTML = `<div id="focus-page">
+    <h2 style="margin-top:0">🎯 وضع التركيز</h2>
+    ${ratioHtml}
+    ${activeHtml}
+    ${cooldownHtml}
+  </div>`;
+}
+
+export function completeNextFocusStep(id: string): void {
+  const idea = S.ideas.find((x) => x.id === id);
+  if (!idea) return;
+  const { stepIndex } = getNextUncompletedStep(idea);
+  if (stepIndex < 0) return;
+  idea.plan[stepIndex].done = true;
+  save(toast);
+  bus.emit('idea:updated', { ideaId: id });
+  focusView();
+  toast('أحسنت! تم إنجاز الخطوة');
+}
+
+export function startProjectFromFocus(id: string): void {
+  upd(id, 'status', 'doing');
+  if (document.getElementById('focus-page')) {
+    focusView();
   }
 }
 
@@ -1001,6 +1314,12 @@ export function setupWindowGlobals(): void {
   g.toPrompt = toPrompt;
   g.toMD = toMD;
   g.home = home;
+  g.focusView = focusView;
+  g.completeNextFocusStep = completeNextFocusStep;
+  g.startProjectFromFocus = startProjectFromFocus;
+  g.openBypassCooldown = openBypassCooldown;
+  g.confirmBypassCooldown = confirmBypassCooldown;
+  g.switchDoingProject = switchDoingProject;
   g.grid = grid;
   g.newIdea = newIdea;
   g.exitDiscussion = exitDiscussion;

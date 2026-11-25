@@ -17,7 +17,7 @@ import {
 } from '../core';
 import { MigrationCapableStore, Store } from './types';
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 export const LEGACY_STORAGE_KEY = 'ideavault.v1';
 export const LEGACY_BACKUP_KEY = 'ideavault.v1.backup';
 
@@ -115,6 +115,13 @@ export function migrate(raw: unknown): Idea {
       )
       .map((m: any) => ({ role: m.role, content: m.content }));
     migrated.chat = validChat;
+  }
+
+  if (typeof r.cooldown_until === 'number' && Number.isFinite(r.cooldown_until) && r.cooldown_until > 0) {
+    migrated.cooldown_until = r.cooldown_until;
+  }
+  if (typeof r.cooldown_bypass_reason === 'string' && r.cooldown_bypass_reason.trim()) {
+    migrated.cooldown_bypass_reason = r.cooldown_bypass_reason.trim();
   }
 
   return migrated;

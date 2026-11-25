@@ -1,8 +1,9 @@
 import { AppModule, isFeatureEnabled } from '../../core';
 import { S, save } from '../../store';
-import { home } from './ui';
+import { focusView, home } from './ui';
 
 export * from './logic';
+export * from './focus';
 export * from './ui';
 
 export const vaultModule: AppModule = {
@@ -14,11 +15,21 @@ export const vaultModule: AppModule = {
       title: 'Sharara',
       render: () => home(),
     },
+    {
+      path: '/focus',
+      title: '🎯 التركيز',
+      render: () => focusView(),
+    },
   ],
   onEvent(event) {
     if (event.type === 'prototype:generated') {
       const idea = S.ideas.find((x) => x.id === event.payload.ideaId);
-      if (idea && (idea.lifecycle === 'idea' || idea.lifecycle === 'planned')) {
+      if (
+        idea &&
+        (idea.lifecycle === 'idea' ||
+          idea.lifecycle === 'planned' ||
+          idea.lifecycle === 'cooldown')
+      ) {
         idea.lifecycle = 'prototype_generated';
         void save();
       }

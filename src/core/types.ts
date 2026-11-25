@@ -123,6 +123,8 @@ export interface Idea {
   components: HardwareComponent[];
   notes: string;
   chat?: ChatMessage[];
+  cooldown_until?: number;
+  cooldown_bypass_reason?: string;
 }
 
 export type FeatureFlagKey =

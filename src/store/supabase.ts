@@ -169,9 +169,17 @@ export function mergeIdeaConflict(local: Idea, remote: Idea): Idea {
     };
   });
 
+  const cooldownUntil =
+    winner.cooldown_until ??
+    other.cooldown_until ??
+    (winner.lifecycle === 'cooldown' ? winner.created + 7 * 86400_000 : undefined);
+
   return {
     ...winner,
     plan: mergedPlan,
+    cooldown_until: cooldownUntil,
+    cooldown_bypass_reason:
+      winner.cooldown_bypass_reason || other.cooldown_bypass_reason,
     updatedAt: Math.max(localTime, remoteTime),
   };
 }

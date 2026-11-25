@@ -48,7 +48,7 @@ export const DEFAULT_FEATURES: FeatureFlags = {
   'iot.telemetry': false,
   'iot.flash': false,
   'iot.ota': false,
-  focus: false,
+  focus: true,
 };
 
 export const DEFAULTS: Settings = {

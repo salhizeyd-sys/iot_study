@@ -9,16 +9,16 @@ import {
 } from './index';
 
 describe('core architecture', () => {
-  it('enables vault, iot.prototype, and iot.dashboard feature flags in current milestone', () => {
+  it('enables vault, iot.prototype, iot.dashboard, and focus feature flags in current milestone', () => {
     const settings = mergeSettings();
     expect(settings.features).toEqual(DEFAULT_FEATURES);
     expect(isFeatureEnabled(settings, 'vault')).toBe(true);
     expect(isFeatureEnabled(settings, 'iot.prototype')).toBe(true);
     expect(isFeatureEnabled(settings, 'iot.dashboard')).toBe(true);
+    expect(isFeatureEnabled(settings, 'focus')).toBe(true);
     expect(isFeatureEnabled(settings, 'iot.telemetry')).toBe(false);
     expect(isFeatureEnabled(settings, 'iot.flash')).toBe(false);
     expect(isFeatureEnabled(settings, 'iot.ota')).toBe(false);
-    expect(isFeatureEnabled(settings, 'focus')).toBe(false);
   });
 
   it('delivers typed events via EventBus and dispatches only to enabled modules', () => {
