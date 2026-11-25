@@ -17,7 +17,7 @@
 | S9 | Supabase: حساب + مزامنة | ✅ |
 | S10 | llm-proxy (إخفاء مفتاح الـ AI) | ✅ |
 | S11 | وضع التركيز | ✅ |
-| S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ⏳ 🛑 بانتظار التحقق اليدوي |
+| S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ✅ |
 | S13 | استقبال القراءات واللوحة الحية | ⬜ 🛑 |
 | S14 | أوامر التحكم من الهاتف | ⬜ |
 | S15 | OTA | ⬜ |
@@ -139,11 +139,28 @@
    - على الهاتف (`!caps.webSerial`): زر «🚀 جاهز للرفع» يضبط `lifecycle = 'ready_to_flash'` ويظهر مشروعك على الحاسوب كجاهز للرفع.
 3. تحديث قالب ESP32 بإضافة مستمع التهيئة عبر Serial وبوابة Captive Portal عند خلو NVS.
 **معايير القبول (المساعد):** اختبارات لـ `scripts/compile-local` (تحضير الملفات وتسمية `.ino` والإزاحات)، ولحارس المراجعة الإجبارية وتنسيق سطر JSON للتهيئة ومنطق التسليم `ready_to_flash`؛ `npm run build` و`npm test` و`npm run lint` تمر.
-**دليل المساعد:** أُنشئ الخادم المحلي في `scripts/compile-local/server.mjs` و`lib.mjs`؛ ونُقلت دالة فحص أرجل ESP32 إلى `src/core/esp32.ts` لمنع الاستيراد بين الوحدات؛ وأُنشئت وحدة `src/modules/iot/flash/` (مراجعة إجبارية، ترجمة محلية، رفع `esptool-js` كسول، تهيئة NVS عبر Web Serial، Serial Monitor، وتسليم `ready_to_flash` للهاتف) مع تحديث قالب Captive Portal والتهيئة التسلسلية في `template.ts`؛ `npm.cmd run build` نجح في `10.13s`؛ `npm.cmd test` مرّ بـ `45/45` اختباراً (منها 4 اختبارات في `src/modules/iot/flash/flash.test.ts`)؛ `npm.cmd run lint` مرّ بـ `0` أخطاء.
+**دليل المساعد:** أُنشئ الخادم المحلي في `scripts/compile-local/server.mjs` و`lib.mjs`؛ ونُقلت دالة فحص أرجل ESP32 إلى `src/core/esp32.ts` لمنع الاستيراد بين الوحدات؛ وأُنشئت وحدة `src/modules/iot/flash/` (مراجعة إجبارية، ترجمة محلية، رفع `esptool-js` كسول، تهيئة NVS عبر Web Serial، Serial Monitor، وتسليم `ready_to_flash` للهاتف) مع تحديث قالب Captive Portal والتهيئة التسلسلية في `template.ts`؛ `npm.cmd run build` نجح في `10.13s`؛ `npm.cmd test` مرّ بـ `45/45` اختباراً (منها 4 اختبارات في `src/modules/iot/flash/flash.test.ts`)؛ `npm.cmd run lint` مرّ بـ `0` أخطاء؛ وأكّد المستخدم التجربة على ESP32 بـ«تم».
 **🛑 يدوياً:** ثبّت `arduino-cli` ونواة `esp32:esp32`، شغّل `npm run compile-local`، وصّل ESP32 عبر USB بالحاسوب، ثم راجع وترجم وارفع وهيّئ الواي فاي وراقب الإقلاع في Serial Monitor.
 
 # M4: الحقل (بعد نجاح M3)
 
-- **S13 🛑** استقبال القراءات: PROMPTS_V3 الخطوة 8. *🛑 نشر Edge Function.*
-- **S14** أوامر التحكم: الخطوة 10. **S15** OTA: الخطوة 11.
-- **S16 🛑** الاختبار الرأسي: القسم 12 من المعمارية والخطوة 12.
+## S13: استقبال القراءات والأجهزة (Managed) 🛑
+**المهام:**
+1. Migration `supabase/migrations/002_m4_iot_field.sql`: جداول `devices` و`device_tokens` (`token_hash` sha256 فقط) و`iot_telemetry` و`iot_commands` مع `user_id` وRLS وفهارس Realtime، ودالة `cleanup_old_telemetry()` لحذف القراءات الأقدم من 30 يوماً.
+2. Edge Function `supabase/functions/ingest-telemetry/index.ts` (مع `cleanup-telemetry/index.ts`): تحقق بـ SHA-256، حد 4KB، حد معدل (2 ثانية على الأقل)، قبول مفاتيح `dashboard` فقط، تحديث `last_seen_at` و`last_used_at`، والرد بـ `{ ok: true, commands: [], firmware: null }`.
+3. واجهة `modules/iot/telemetry/` (مع `iot.telemetry: true`): زر «🔑 سجّل جهازاً» يعرض الرمز مرة واحدة، وحالة `online`/`offline` (أقل من `3 × الفاصل`)، واحتفال بأول قراءة حية (`lifecycle = 'online'`).
+4. تبديل واضح في لوحة التحكم (`modules/iot/dashboard/`) بين **المحاكاة** و**البث الحي (Realtime)**.
+**معايير القبول (المساعد):** اختبارات لتوليد وتجزئة الرمز، وفلترة مفاتيح `dashboard` وحد 4KB والحد الزمني، وحساب `online`/`offline`، وتبديل المحاكاة/البث الحي في اللوحة؛ `npm run build` و`npm test` و`npm run lint` تمر.
+**🛑 يدوياً:** شغّل `002_m4_iot_field.sql` في Supabase، وانشر `ingest-telemetry` (بـ `--no-verify-jwt`) و`cleanup-telemetry`، وسجّل جهازاً في التطبيق وهيّئه على ESP32 لترى القراءات الحية.
+
+## S14: أوامر التحكم من الهاتف
+**المهام:** ربط `toggle_switch` و`slider` بإدراج صف في `iot_commands` عند التبديل في وضع البث الحي؛ تحديث `ingest-telemetry` لإرجاع الأوامر غير المنفذة وتعليمها منفذة بعد تأكيد الجهاز في الطلب التالي، مع مهلة صلاحية للأمر وتحديث قالب ESP32.
+**معايير القبول:** اختبارات لإرسال الأمر وتأكيد التنفيذ وانتهاء الصلاحية؛ البناء والاختبارات وESLint تمر.
+
+## S15: OTA (التحديث اللاسلكي)
+**المهام:** Migration لـ `firmware_releases` وStorage خاص مع `sha256`؛ تضمين `firmware: { version, url, sha256 }` في رد `ingest-telemetry` عند وجود إصدار أحدث؛ تحديث قالب ESP32 للتحقق من `sha256` قبل التثبيت؛ وزر «حدّث لاسلكياً» في `modules/iot/ota/`.
+**معايير القبول:** اختبارات لتطابق `sha256` ومنطق الإصدارات؛ البناء والاختبارات وESLint تمر.
+
+## S16: الاختبار الرأسي (ESP32 + DHT22 + LED) 🛑
+**المهام:** كتابة `docs/E2E_CHECKLIST.md` من القسم 12 في المعمارية وتنفيذ كل ما يمكن التحقق منه آلياً.
+**🛑 يدوياً:** تنفيذ الدورة الكاملة على مشروع حقيقي (ESP32 + DHT22 + LED) دون أي خطوة خارج المنصة.
