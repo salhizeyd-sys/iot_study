@@ -18,7 +18,7 @@
 | S10 | llm-proxy (إخفاء مفتاح الـ AI) | ✅ |
 | S11 | وضع التركيز | ✅ |
 | S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ✅ |
-| S13 | استقبال القراءات واللوحة الحية | ⏳ 🛑 بانتظار التحقق اليدوي |
+| S13 | استقبال القراءات واللوحة الحية | ✅ |
 | S14 | أوامر التحكم من الهاتف | ⬜ |
 | S15 | OTA | ⬜ |
 | S16 | الاختبار الرأسي (ESP32 + DHT22 + LED) | ⬜ 🛑 |
@@ -151,7 +151,7 @@
 3. واجهة `modules/iot/telemetry/` (مع `iot.telemetry: true`): زر «🔑 سجّل جهازاً» يعرض الرمز مرة واحدة، وحالة `online`/`offline` (أقل من `3 × الفاصل`)، واحتفال بأول قراءة حية (`lifecycle = 'online'`).
 4. تبديل واضح في لوحة التحكم (`modules/iot/dashboard/`) بين **المحاكاة** و**البث الحي (Realtime)**.
 **معايير القبول (المساعد):** اختبارات لتوليد وتجزئة الرمز، وفلترة مفاتيح `dashboard` وحد 4KB والحد الزمني، وحساب `online`/`offline`، وتبديل المحاكاة/البث الحي في اللوحة؛ `npm run build` و`npm test` و`npm run lint` تمر.
-**دليل المساعد:** أُنشئ `supabase/migrations/002_m4_iot_field.sql` (جداول `devices`, `device_tokens`, `iot_telemetry`, `iot_commands` مع RLS وRealtime ودالة حذف 30 يوماً)؛ وEdge Functions في `supabase/functions/ingest-telemetry/index.ts` و`cleanup-telemetry/index.ts`؛ و`src/store/telemetry.ts` و`src/modules/iot/telemetry/` (تسجيل الجهاز بعرض الرمز مرة واحدة، حالة `online`/`offline`، واحتفال بأول قراءة)؛ وتبديل المحاكاة/البث الحي في `src/modules/iot/dashboard/ui.ts`؛ `npm.cmd run build` نجح في `9.25s`؛ `npm.cmd test` مرّ بـ `48/48` اختباراً (12 ملفاً)؛ `npm.cmd run lint` مرّ بـ `0` أخطاء.
+**دليل المساعد:** أُنشئ `supabase/migrations/002_m4_iot_field.sql` (جداول `devices`, `device_tokens`, `iot_telemetry`, `iot_commands` مع RLS وRealtime ودالة حذف 30 يوماً)؛ وEdge Functions في `supabase/functions/ingest-telemetry/index.ts` و`cleanup-telemetry/index.ts`؛ و`src/store/telemetry.ts` و`src/modules/iot/telemetry/` (تسجيل الجهاز بعرض الرمز مرة واحدة، حالة `online`/`offline`، واحتفال بأول قراءة)؛ وتبديل المحاكاة/البث الحي في `src/modules/iot/dashboard/ui.ts`؛ `npm.cmd run build` نجح في `9.25s`؛ `npm.cmd test` مرّ بـ `48/48` اختباراً (ثم `49/49` بعد إصلاح `ingest-telemetry`)؛ `npm.cmd run lint` مرّ بـ `0` أخطاء؛ وأكّد المستخدم الاستقبال الحي بـ«تم».
 **🛑 يدوياً:** شغّل `002_m4_iot_field.sql` في Supabase، وانشر `ingest-telemetry` (بـ `--no-verify-jwt`) و`cleanup-telemetry`، وسجّل جهازاً في التطبيق وهيّئه على ESP32 لترى القراءات الحية.
 
 ## S14: أوامر التحكم من الهاتف
