@@ -51,6 +51,14 @@ export {
   listDeviceCommands,
   subscribeDeviceCommands,
 } from './telemetry';
+export {
+  FIRMWARE_BUCKET,
+  computeBytesSha256Hex,
+  base64ToBytes,
+  pickAppBinaryPart,
+  listFirmwareReleases,
+  publishOtaRelease,
+} from './ota';
 
 export const store = new IndexedDBStore();
 

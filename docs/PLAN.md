@@ -20,7 +20,7 @@
 | S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ✅ |
 | S13 | استقبال القراءات واللوحة الحية | ✅ |
 | S14 | أوامر التحكم من الهاتف | ✅ |
-| S15 | OTA | ⬜ |
+| S15 | OTA | ✅ |
 | S16 | الاختبار الرأسي (ESP32 + DHT22 + LED) | ⬜ 🛑 |
 
 🛑 = نقطة توقف بشرية: يتوقف المساعد ويعطيني الخطوات اليدوية بدقة، ولا يكمل حتى أقول "تم".
@@ -162,6 +162,7 @@
 ## S15: OTA (التحديث اللاسلكي)
 **المهام:** Migration لـ `firmware_releases` وStorage خاص مع `sha256`؛ تضمين `firmware: { version, url, sha256 }` في رد `ingest-telemetry` عند وجود إصدار أحدث؛ تحديث قالب ESP32 للتحقق من `sha256` قبل التثبيت؛ وزر «حدّث لاسلكياً» في `modules/iot/ota/`.
 **معايير القبول:** اختبارات لتطابق `sha256` ومنطق الإصدارات؛ البناء والاختبارات وESLint تمر.
+**الدليل:** أُنشئ `supabase/migrations/003_m4_ota.sql` (جدول `firmware_releases` وbucket خاص `firmware-bins` مع RLS)، ومُكّن `'iot.ota': true` (`CURRENT_SETTINGS_VERSION = 5`)، وأُنشئت `src/store/ota.ts` و`src/modules/iot/ota/` (منطق مقارنة الإصدارات والتحقق من `sha256`، منع OTA للأجهزة غير المهيأة، وزر «🚀 حدّث لاسلكياً» مع دعم الترجمة المحلية أو رفع ملف `.bin` على الهاتف)، ودُعمت مقارنة `firmware_version` وتوقيع رابط التنزيل في `supabase/functions/ingest-telemetry/index.ts` والتحقق via `mbedtls_sha256` + `Update.h` في `src/modules/iot/prototype/template.ts`. `npm.cmd run build` (9.40s) و`npm.cmd test` (13 ملفاً، 53 اختباراً) و`npm.cmd run lint` (0 أخطاء).
 
 ## S16: الاختبار الرأسي (ESP32 + DHT22 + LED) 🛑
 **المهام:** كتابة `docs/E2E_CHECKLIST.md` من القسم 12 في المعمارية وتنفيذ كل ما يمكن التحقق منه آلياً.

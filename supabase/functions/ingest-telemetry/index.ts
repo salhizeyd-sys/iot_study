@@ -30,6 +30,28 @@ async function sha256Hex(raw: string): Promise<string> {
     .toLowerCase();
 }
 
+function parseVersionTuple(version: string): number[] {
+  return version
+    .replace(/^v/i, '')
+    .split(/[^0-9]+/)
+    .filter(Boolean)
+    .map((n) => Number.parseInt(n, 10))
+    .map((n) => (Number.isFinite(n) ? n : 0));
+}
+
+function isNewerVersion(candidate: string, current: string): boolean {
+  const c = parseVersionTuple(candidate);
+  const cur = parseVersionTuple(current);
+  const len = Math.max(c.length, cur.length);
+  for (let i = 0; i < len; i += 1) {
+    const cv = c[i] ?? 0;
+    const rv = cur[i] ?? 0;
+    if (cv > rv) return true;
+    if (cv < rv) return false;
+  }
+  return false;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS });
@@ -153,14 +175,21 @@ Deno.serve(async (req: Request) => {
 
   const filteredPayload: Record<string, number | boolean | string> = {};
   for (const [k, v] of Object.entries(bodyObj)) {
-    if (k === 'ack_commands') continue;
+    if (k === 'ack_commands' || k === 'firmware_version') continue;
     if (!allowedKeys.has(k)) continue;
     if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') {
       filteredPayload[k] = v;
     }
   }
 
-  if (Object.keys(filteredPayload).length === 0 && ackIds.length === 0) {
+  const reportedFirmwareVersion =
+    typeof bodyObj.firmware_version === 'string' ? bodyObj.firmware_version.trim() : '';
+
+  if (
+    Object.keys(filteredPayload).length === 0 &&
+    ackIds.length === 0 &&
+    !reportedFirmwareVersion
+  ) {
     return jsonResponse(
       { error: 'No allowed dashboard telemetry keys found in payload' },
       400
@@ -193,6 +222,35 @@ Deno.serve(async (req: Request) => {
     .order('created_at', { ascending: true })
     .limit(10);
 
+  // 4. Check for newer OTA firmware release for this idea
+  let firmwarePayload: { version: string; url: string; sha256: string } | null = null;
+  if (reportedFirmwareVersion) {
+    const { data: latestRelease } = await supabase
+      .from('firmware_releases')
+      .select('version, storage_path, sha256')
+      .eq('idea_id', deviceRow.idea_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (
+      latestRelease &&
+      isNewerVersion(latestRelease.version, reportedFirmwareVersion)
+    ) {
+      const { data: signedData } = await supabase.storage
+        .from('firmware-bins')
+        .createSignedUrl(latestRelease.storage_path, 300);
+
+      if (signedData?.signedUrl) {
+        firmwarePayload = {
+          version: latestRelease.version,
+          url: signedData.signedUrl,
+          sha256: latestRelease.sha256,
+        };
+      }
+    }
+  }
+
   return jsonResponse({
     ok: true,
     commands: (pendingCmds || []).map((c) => ({
@@ -200,6 +258,6 @@ Deno.serve(async (req: Request) => {
       action: c.action,
       value: c.value,
     })),
-    firmware: null,
+    firmware: firmwarePayload,
   });
 });

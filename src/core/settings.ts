@@ -41,7 +41,7 @@ export const FOCUS: Record<IdeaFocus, [string, string]> = {
   distraction: ['تشتيت', 'er'],
 };
 
-export const CURRENT_SETTINGS_VERSION = 4;
+export const CURRENT_SETTINGS_VERSION = 5;
 
 export const DEFAULT_FEATURES: FeatureFlags = {
   vault: true,
@@ -49,7 +49,7 @@ export const DEFAULT_FEATURES: FeatureFlags = {
   'iot.dashboard': true,
   'iot.telemetry': true,
   'iot.flash': true,
-  'iot.ota': false,
+  'iot.ota': true,
   focus: true,
 };
 
@@ -86,6 +86,7 @@ export function mergeSettings(partial?: Partial<Settings> | null): Settings {
     mergedFeatures['iot.dashboard'] = true;
     mergedFeatures['iot.telemetry'] = true;
     mergedFeatures['iot.flash'] = true;
+    mergedFeatures['iot.ota'] = true;
     mergedFeatures.focus = true;
   }
 

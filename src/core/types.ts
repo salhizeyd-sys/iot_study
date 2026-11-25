@@ -192,6 +192,7 @@ export interface AppEventMap {
     payload: Record<string, number | boolean | string>;
     createdAt: number;
   };
+  'ota:released': { ideaId: string; version: string; sha256: string };
   'settings:changed': { settings: Settings };
 }
 
@@ -235,6 +236,16 @@ export interface IoTCommandRecord {
   value: number | boolean | string | null;
   executed_at: string | null;
   expires_at: string;
+  created_at: string;
+}
+
+export interface FirmwareReleaseRecord {
+  id: string;
+  user_id: string;
+  idea_id: string;
+  version: string;
+  storage_path: string;
+  sha256: string;
   created_at: string;
 }
 

@@ -2,6 +2,10 @@ export const ESP32_NVS_REFERENCE_SNIPPET = `#include <WiFi.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <WebServer.h>
+#include <Update.h>
+#include "mbedtls/sha256.h"
+
+#define FIRMWARE_VERSION "1.0.0"
 
 Preferences prefs;
 WebServer portalServer(80);
@@ -82,6 +86,65 @@ void handleServerCommands(const String& responseJson) {
     Serial.println("[CMD] Received commands: " + responseJson);
   }
 }
+
+// Verify SHA-256 of streamed OTA binary before committing Update
+bool verifyAndInstallOta(const String& otaUrl, const String& expectedSha256) {
+  HTTPClient http;
+  if (!http.begin(otaUrl)) return false;
+  int code = http.GET();
+  int len = http.getSize();
+  if (code != HTTP_CODE_OK || len <= 0 || !Update.begin(len)) {
+    http.end();
+    return false;
+  }
+
+  WiFiClient* stream = http.getStreamPtr();
+  mbedtls_sha256_context ctx;
+  mbedtls_sha256_init(&ctx);
+  mbedtls_sha256_starts(&ctx, 0);
+
+  uint8_t buf[1024];
+  int remaining = len;
+  while (http.connected() && remaining > 0) {
+    size_t avail = stream->available();
+    if (avail) {
+      int n = stream->readBytes(buf, min((int)sizeof(buf), (int)avail));
+      mbedtls_sha256_update(&ctx, buf, n);
+      if (Update.write(buf, n) != (size_t)n) {
+        Update.abort();
+        mbedtls_sha256_free(&ctx);
+        http.end();
+        return false;
+      }
+      remaining -= n;
+    } else {
+      delay(10);
+    }
+  }
+
+  uint8_t hash[32];
+  mbedtls_sha256_finish(&ctx, hash);
+  mbedtls_sha256_free(&ctx);
+  http.end();
+
+  String actualHex = "";
+  for (int i = 0; i < 32; i++) {
+    char hex[3];
+    sprintf(hex, "%02x", hash[i]);
+    actualHex += hex;
+  }
+  if (!actualHex.equalsIgnoreCase(expectedSha256)) {
+    Update.abort();
+    Serial.println("[OTA] SHA-256 mismatch! Aborting update.");
+    return false;
+  }
+  if (Update.end(true)) {
+    Serial.println("[OTA] Verified & installed. Rebooting...");
+    ESP.restart();
+    return true;
+  }
+  return false;
+}
 `;
 
 export function hasHardcodedSecrets(code: string): boolean {
@@ -106,7 +169,7 @@ export function sysPrototype(
 قواعد إلزامية:
 1. اللوحة في الإصدار الأول ESP32 فقط (مثل "esp32:esp32:esp32"، و"ota": true).
 2. ممنوع تماماً كتابة كلمة مرور Wi-Fi أو SSID أو رمز الجهاز (token) أو رابط ثابت كقيم سرية داخل الكود. يجب أن يقرأ الكود إعداداته ("wifi_ssid", "wifi_pass", "device_token", "ingest_url") من NVS عبر مكتبة <Preferences.h> (namespace "iot_vault")، ويدعم استقبال سطر JSON التهيئة عبر Serial وكذلك بوابة Captive Portal ("Sharara-Setup") عند خلو NVS.
-3. إرسال القراءات عبر HTTP POST (مع ترويسة Authorization: Bearer <device_token>) كل 5000 مللي ثانية (5 ثوانٍ) بدون delay يعطّل الحلقة الرئيسية (استخدم millis())، وتنفيذ مصفوفة "commands" الراجعة من الرد مع إرسال "ack_commands": ["<id>"] في الطلب التالي لتأكيد التنفيذ.
+3. إرسال القراءات عبر HTTP POST (مع ترويسة Authorization: Bearer <device_token> وتضمين "firmware_version": FIRMWARE_VERSION) كل 5000 مللي ثانية (5 ثوانٍ) بدون delay يعطّل الحلقة الرئيسية (استخدم millis())، وتنفيذ مصفوفة "commands" الراجعة مع إرسال "ack_commands": ["<id>"] في الطلب التالي لتأكيد التنفيذ، والتحقق من "firmware": {"version","url","sha256"} عند وجوده عبر verifyAndInstallOta(url, sha256) قبل تثبيت تحديث OTA.
 4. تجنب أرجل الفلاش (GPIO6..11)، وتجنب أرجل الإدخال فقط (34, 35, 36, 39) للمخرجات أو الحساسات ثنائية الاتجاه مثل DHT22، ولا تكرر نفس الرجل.
 5. أخرج JSON يطابق المخطط التالي حرفياً:
 {
