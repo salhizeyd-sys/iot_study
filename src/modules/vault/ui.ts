@@ -112,7 +112,7 @@ export function grid(): void {
     `<div class="empty" style="grid-column:1/-1">${
       S.ideas.length
         ? 'لا نتائج مطابقة.'
-        : 'خزانتك فارغة. اضغط «فكرة جديدة» أو «فكرة سريعة» وابدأ.'
+        : 'مشاريعك في Sharara فارغة. اضغط «فكرة جديدة» أو «فكرة سريعة» وابدأ.'
     }</div>`;
 }
 
@@ -147,7 +147,7 @@ export function newIdea(draftId?: string, initialText?: string): void {
        <button class="btn g" id="fin" onclick="finalize()">حوّلها إلى خطة واحفظها</button>
        ${draft ? '<button class="btn g" id="mem-btn" onclick="refreshProjectMemory()">🧠 تحديث الذاكرة</button>' : ''}`;
 
-  app.innerHTML = `<button class="btn g" onclick="exitDiscussion()">← الخزانة</button><h2>${
+  app.innerHTML = `<button class="btn g" onclick="exitDiscussion()">← Sharara</button><h2>${
     draft ? esc(draft.name) : 'فكرة جديدة'
   }</h2>
   ${memoryBanner}

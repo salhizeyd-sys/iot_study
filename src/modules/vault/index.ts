@@ -11,7 +11,7 @@ export const vaultModule: AppModule = {
   routes: [
     {
       path: '/',
-      title: 'خزانة الأفكار',
+      title: 'Sharara',
       render: () => home(),
     },
   ],

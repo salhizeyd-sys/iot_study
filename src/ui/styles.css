@@ -74,6 +74,17 @@ h1 {
   white-space: nowrap;
 }
 
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand img {
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+
 h2 {
   font-size: 17px;
   margin: 14px 0 6px;

@@ -1,9 +1,60 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#0f5c4d"/>
-  <rect x="116" y="136" width="280" height="240" rx="28" fill="none" stroke="#e0eee9" stroke-width="24"/>
-  <line x1="116" y1="216" x2="396" y2="216" stroke="#e0eee9" stroke-width="20"/>
-  <circle cx="256" cy="296" r="28" fill="#4cc4a8"/>
-  <line x1="196" y1="100" x2="196" y2="136" stroke="#4cc4a8" stroke-width="20" stroke-linecap="round"/>
-  <line x1="256" y1="100" x2="256" y2="136" stroke="#4cc4a8" stroke-width="20" stroke-linecap="round"/>
-  <line x1="316" y1="100" x2="316" y2="136" stroke="#4cc4a8" stroke-width="20" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1715"/>
+      <stop offset="60%" stop-color="#132923"/>
+      <stop offset="100%" stop-color="#0f5c4d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="48%" r="45%">
+      <stop offset="0%" stop-color="#4cc4a8" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#4cc4a8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="55%" stop-color="#4cc4a8"/>
+      <stop offset="100%" stop-color="#0f5c4d" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark emerald background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  <circle cx="256" cy="248" r="210" fill="url(#glow)"/>
+
+  <!-- Subtle stars / sparks -->
+  <circle cx="128" cy="148" r="5" fill="#4cc4a8" opacity="0.65"/>
+  <circle cx="384" cy="132" r="4" fill="#e0eee9" opacity="0.6"/>
+  <circle cx="372" cy="340" r="5" fill="#4cc4a8" opacity="0.5"/>
+  <circle cx="140" cy="336" r="3.5" fill="#fbbf24" opacity="0.7"/>
+
+  <!-- Rocket group centered cleanly inside maskable safe zone -->
+  <g transform="translate(256 256) rotate(35) translate(-256 -256)">
+    <!-- Exhaust flame (Sharara spark) -->
+    <path d="M234 334 C234 374 256 414 256 414 C256 414 278 374 278 334 Z" fill="url(#flameGrad)"/>
+    <path d="M244 334 C244 358 256 382 256 382 C256 382 268 358 268 334 Z" fill="#fef08a"/>
+
+    <!-- Left & Right Fins -->
+    <path d="M214 268 L174 322 C170 328 174 336 182 334 L216 318 Z" fill="#0f5c4d"/>
+    <path d="M298 268 L338 322 C342 328 338 336 330 334 L296 318 Z" fill="#4cc4a8"/>
+
+    <!-- Center stabilizer fin -->
+    <rect x="251" y="294" width="10" height="44" rx="5" fill="#1b7f68"/>
+
+    <!-- Nozzle -->
+    <path d="M232 322 L280 322 L272 338 L240 338 Z" fill="#2a3833"/>
+
+    <!-- Rocket Body -->
+    <path d="M256 106 C214 148 206 218 214 322 L298 322 C306 218 298 148 256 106 Z" fill="#e0eee9"/>
+    <!-- Right side subtle emerald shading -->
+    <path d="M256 106 C298 148 306 218 298 322 L256 322 Z" fill="#c7e2d8"/>
+
+    <!-- Nose tip accent -->
+    <path d="M256 106 C239 124 228 146 222 172 L290 172 C284 146 273 124 256 106 Z" fill="#4cc4a8"/>
+    <path d="M256 106 C273 124 284 146 290 172 L256 172 Z" fill="#0f5c4d"/>
+
+    <!-- Porthole window -->
+    <circle cx="256" cy="222" r="28" fill="#0f5c4d"/>
+    <circle cx="256" cy="222" r="20" fill="#0f1715"/>
+    <circle cx="256" cy="222" r="14" fill="#4cc4a8" opacity="0.9"/>
+    <circle cx="250" cy="216" r="5" fill="#ffffff" opacity="0.85"/>
+  </g>
 </svg>
