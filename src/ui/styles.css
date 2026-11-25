@@ -607,16 +607,18 @@ table.responsive-table th {
   background: var(--card);
 }
 
-#dlg[open] {
-  display: flex;
-  flex-direction: column;
+#dlg[open],
+html[dir="ltr"] #dlg[open],
+html[dir="rtl"] #dlg[open] {
+  display: block !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 
 .idea-modal-sticky {
   position: sticky;
   top: 0;
   z-index: 10;
-  flex-shrink: 0;
   width: 100%;
   background: var(--card);
   border-bottom: 1px solid var(--bd);
@@ -686,11 +688,7 @@ table.responsive-table th {
 }
 
 .idea-tab-panels {
-  flex: 1;
   width: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
   padding: 14px 16px calc(24px + env(safe-area-inset-bottom));
 }
 

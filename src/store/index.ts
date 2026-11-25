@@ -1,6 +1,6 @@
 import { AppState, Idea, PrototypeRecord, PrototypeV1, bus, mergeSettings } from '../core';
 import { IndexedDBStore } from './idb';
-import { CURRENT_SCHEMA_VERSION, migrate, migrateFromLocalStorage } from './migrate';
+import { CURRENT_SCHEMA_VERSION, CURRENT_SETTINGS_VERSION, migrate, migrateFromLocalStorage, migrateSettings } from './migrate';
 import { getCurrentSupabaseUser, getSupabaseClient } from './supabaseClient';
 import { createDefaultSyncManager } from './sync';
 
@@ -8,9 +8,11 @@ export type { Store, SettingsStore, MigrationCapableStore, PrototypeStore } from
 export { IndexedDBStore } from './idb';
 export {
   CURRENT_SCHEMA_VERSION,
+  CURRENT_SETTINGS_VERSION,
   LEGACY_STORAGE_KEY,
   LEGACY_BACKUP_KEY,
   migrate,
+  migrateSettings,
   migrateFromLocalStorage,
   statusToLifecycle,
 } from './migrate';
@@ -58,9 +60,13 @@ let onlineListenersBound = false;
 
 export async function initStore(): Promise<void> {
   await migrateFromLocalStorage(store, store);
-  const [ideas, settings] = await Promise.all([store.list(), store.getSettings()]);
+  const [ideas, rawSettings] = await Promise.all([store.list(), store.getSettings()]);
   S.ideas = ideas;
-  S.settings = mergeSettings(settings);
+  const migratedSettings = migrateSettings(rawSettings);
+  S.settings = migratedSettings;
+  if (!rawSettings || (rawSettings.settingsVersion ?? 1) < CURRENT_SETTINGS_VERSION) {
+    await store.saveSettings(migratedSettings);
+  }
 
   const client = getSupabaseClient();
   if (client) {

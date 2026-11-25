@@ -139,6 +139,7 @@ export type FeatureFlagKey =
 export type FeatureFlags = Record<FeatureFlagKey, boolean>;
 
 export interface Settings {
+  settingsVersion?: number;
   provider: 'gemini' | 'openai' | 'anthropic' | string;
   model: string;
   key: string;

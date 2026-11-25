@@ -17,21 +17,21 @@
   <div class="header-right">
     <button type="button" id="sync-pill" class="sync-pill" onclick="openSettings()" aria-label="حالة المزامنة">⚪ محلي</button>
     <div class="header-actions">
-      <button class="btn" onclick="newIdea()">＋ فكرة جديدة</button>
-      <button class="btn g" onclick="focusView()">🎯 التركيز</button>
-      <button class="btn g" onclick="openQuickCapture()">⚡ فكرة سريعة</button>
-      <button class="btn g" onclick="openSettings()" aria-label="الإعدادات">⚙️</button>
+      <button type="button" class="btn" data-view="new" onclick="newIdea()">＋ فكرة جديدة</button>
+      <button type="button" class="btn g" data-view="focus">🎯 التركيز</button>
+      <button type="button" class="btn g" data-view="quick" onclick="openQuickCapture()">⚡ فكرة سريعة</button>
+      <button type="button" class="btn g" data-view="settings" onclick="openSettings()" aria-label="الإعدادات">⚙️</button>
     </div>
   </div>
 </header>
 <main id="app"></main>
 <button class="fab" onclick="openQuickCapture()" aria-label="فكرة سريعة">⚡ فكرة سريعة</button>
 <nav class="bottom-nav" aria-label="التنقل الرئيسي">
-  <button type="button" data-nav="home" class="active" onclick="home()"><span>🚀</span><span>Sharara</span></button>
-  <button type="button" data-nav="focus" onclick="focusView()"><span>🎯</span><span>التركيز</span></button>
-  <button type="button" data-nav="new" onclick="newIdea()"><span>＋</span><span>نقاش</span></button>
-  <button type="button" data-nav="quick" onclick="openQuickCapture()"><span>⚡</span><span>سريعة</span></button>
-  <button type="button" data-nav="settings" onclick="openSettings()"><span>⚙️</span><span>الإعدادات</span></button>
+  <button type="button" data-nav="home" data-view="home" class="active" onclick="home()"><span>🚀</span><span>Sharara</span></button>
+  <button type="button" data-nav="focus" data-view="focus"><span>🎯</span><span>التركيز</span></button>
+  <button type="button" data-nav="new" data-view="new" onclick="newIdea()"><span>＋</span><span>نقاش</span></button>
+  <button type="button" data-nav="quick" data-view="quick" onclick="openQuickCapture()"><span>⚡</span><span>سريعة</span></button>
+  <button type="button" data-nav="settings" data-view="settings" onclick="openSettings()"><span>⚙️</span><span>الإعدادات</span></button>
 </nav>
 <dialog id="dlg"></dialog>
 <dialog id="set"></dialog>

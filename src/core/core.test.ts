@@ -55,6 +55,31 @@ describe('core architecture', () => {
     reg.clear();
   });
 
+  it('upgrades legacy settings missing settingsVersion to enable released focus & iot flags', () => {
+    const legacy = {
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      key: '',
+      base: 'https://api.openai.com/v1',
+      goals: 'Embedded',
+      maxDoing: 2,
+      features: {
+        vault: true,
+        'iot.prototype': false,
+        'iot.dashboard': false,
+        'iot.telemetry': false,
+        'iot.flash': false,
+        'iot.ota': false,
+        focus: false,
+      },
+    };
+    const upgraded = mergeSettings(legacy as any);
+    expect(upgraded.settingsVersion).toBe(2);
+    expect(upgraded.features.focus).toBe(true);
+    expect(upgraded.features['iot.prototype']).toBe(true);
+    expect(upgraded.features['iot.dashboard']).toBe(true);
+  });
+
   it('detects capabilities safely outside browser APIs', () => {
     const c = detectCapabilities();
     expect(typeof c.webSerial).toBe('boolean');

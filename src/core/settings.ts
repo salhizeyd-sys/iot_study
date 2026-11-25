@@ -41,6 +41,8 @@ export const FOCUS: Record<IdeaFocus, [string, string]> = {
   distraction: ['تشتيت', 'er'],
 };
 
+export const CURRENT_SETTINGS_VERSION = 2;
+
 export const DEFAULT_FEATURES: FeatureFlags = {
   vault: true,
   'iot.prototype': true,
@@ -52,6 +54,7 @@ export const DEFAULT_FEATURES: FeatureFlags = {
 };
 
 export const DEFAULTS: Settings = {
+  settingsVersion: CURRENT_SETTINGS_VERSION,
   provider: 'gemini',
   model: 'gemini-2.5-flash',
   base: 'https://api.openai.com/v1',
@@ -70,18 +73,30 @@ export const MODELS: Record<string, string> = {
 };
 
 export function mergeSettings(partial?: Partial<Settings> | null): Settings {
+  const isLegacySettings = !partial || (partial.settingsVersion ?? 1) < CURRENT_SETTINGS_VERSION;
+  const mergedFeatures: FeatureFlags = {
+    ...DEFAULT_FEATURES,
+    ...(partial?.features || {}),
+  };
+
+  // Auto-enable released M1/M2 modules for users upgrading from older settings
+  if (isLegacySettings) {
+    mergedFeatures.vault = true;
+    mergedFeatures['iot.prototype'] = true;
+    mergedFeatures['iot.dashboard'] = true;
+    mergedFeatures.focus = true;
+  }
+
   return {
     ...DEFAULTS,
     ...(partial || {}),
+    settingsVersion: CURRENT_SETTINGS_VERSION,
     speechLang: partial?.speechLang || DEFAULTS.speechLang,
     contextBudget:
       typeof partial?.contextBudget === 'number' && partial.contextBudget >= 200
         ? partial.contextBudget
         : DEFAULTS.contextBudget,
-    features: {
-      ...DEFAULT_FEATURES,
-      ...(partial?.features || {}),
-    },
+    features: mergedFeatures,
   };
 }
 

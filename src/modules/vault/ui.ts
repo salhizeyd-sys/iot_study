@@ -973,11 +973,18 @@ export function confirmBypassCooldown(id: string): void {
   }
 }
 
+function closeAllDialogs(): void {
+  ['#dlg', '#set', '#quick', '#focus-dlg'].forEach((sel) => {
+    const d = $(sel) as HTMLDialogElement | null;
+    if (d && d.open && typeof d.close === 'function') {
+      d.close();
+    }
+  });
+  document.body.classList.remove('idea-modal-open');
+}
+
 export function focusView(): void {
-  if (!isFeatureEnabled(S.settings, 'focus')) {
-    home();
-    return;
-  }
+  closeAllDialogs();
   setNavActive('focus');
   const app = $('#app');
   if (!app) return;
@@ -1315,6 +1322,7 @@ export function setupWindowGlobals(): void {
   g.toMD = toMD;
   g.home = home;
   g.focusView = focusView;
+  g.renderFocusView = focusView;
   g.completeNextFocusStep = completeNextFocusStep;
   g.startProjectFromFocus = startProjectFromFocus;
   g.openBypassCooldown = openBypassCooldown;
@@ -1350,4 +1358,14 @@ export function setupWindowGlobals(): void {
   g.syncNow = syncNow;
   g.logoutSupabase = logoutSupabase;
   g.toast = toast;
+
+  document
+    .querySelectorAll<HTMLButtonElement>('[data-view="focus"]')
+    .forEach((btn) => {
+      if (btn.dataset.boundFocus === '1') return;
+      btn.dataset.boundFocus = '1';
+      btn.addEventListener('click', () => {
+        focusView();
+      });
+    });
 }

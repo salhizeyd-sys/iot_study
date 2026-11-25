@@ -13,8 +13,15 @@ import {
   LIFECYCLE,
   STATUS,
   TYPES,
+  CURRENT_SETTINGS_VERSION,
   mergeSettings,
 } from '../core';
+
+export function migrateSettings(raw?: Partial<Settings> | null): Settings {
+  return mergeSettings(raw);
+}
+
+export { CURRENT_SETTINGS_VERSION };
 import { MigrationCapableStore, Store } from './types';
 
 export const CURRENT_SCHEMA_VERSION = 5;

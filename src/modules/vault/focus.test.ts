@@ -56,11 +56,11 @@ describe('Focus Mode, Cooldown, and maxDoing switcher (S11)', () => {
     document.body.innerHTML = `
       <main id="app"></main>
       <nav class="bottom-nav">
-        <button data-nav="home"></button>
-        <button data-nav="focus"></button>
-        <button data-nav="new"></button>
-        <button data-nav="quick"></button>
-        <button data-nav="settings"></button>
+        <button data-nav="home" data-view="home"></button>
+        <button data-nav="focus" data-view="focus"></button>
+        <button data-nav="new" data-view="new"></button>
+        <button data-nav="quick" data-view="quick"></button>
+        <button data-nav="settings" data-view="settings"></button>
       </nav>
       <dialog id="dlg"></dialog>
       <dialog id="set"></dialog>
@@ -177,5 +177,10 @@ describe('Focus Mode, Cooldown, and maxDoing switcher (S11)', () => {
     confirmBypassCooldown('cool-1');
     expect(isInCooldown(S.ideas[1])).toBe(false);
     expect(S.ideas[1].cooldown_bypass_reason).toBe('مطلوب هذا الأسبوع');
+
+    // Verify clicking [data-view="focus"] button triggers focusView() cleanly
+    document.querySelector('#app')!.innerHTML = '';
+    document.querySelector<HTMLButtonElement>('[data-view="focus"]')?.click();
+    expect(document.querySelector('#focus-page')).not.toBeNull();
   });
 });
