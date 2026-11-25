@@ -543,8 +543,8 @@ export function openIdea(id: string, requestedTabId?: string): void {
       <div class="idea-modal-head-actions">
         <button type="button" class="btn" data-head-action="discuss" onclick="discussIdea('${id}')">💬 ناقش هذا المشروع</button>
         <button type="button" class="btn g" data-head-action="export-md" onclick="exp('${id}','md')">📄 .md</button>
-        <button type="button" class="btn g idea-close-btn" onclick="dlg.close()" aria-label="إغلاق">✕</button>
       </div>
+      <button type="button" class="btn g idea-close-btn" onclick="dlg.close()" aria-label="إغلاق">✕</button>
     </div>
     <div class="idea-tabs" role="tablist" aria-label="أقسام المشروع">
       ${allTabs

@@ -14,7 +14,7 @@
 | S6 | النموذج الأولي (كود + توصيل + تحذيرات) | ✅ |
 | S7 | لوحة التحكم والمحاكاة على الهاتف | ✅ |
 | S8 | **اختبار الهاتف (نهاية M1)** | ✅ |
-| S9 | Supabase: حساب + مزامنة | ⏳ 🛑 بانتظار التحقق اليدوي |
+| S9 | Supabase: حساب + مزامنة | ✅ |
 | S10 | llm-proxy (إخفاء مفتاح الـ AI) | ⬜ 🛑 |
 | S11 | وضع التركيز | ⬜ |
 | S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ⬜ 🛑 |
@@ -113,7 +113,7 @@
 6. حل التعارض: الأحدث حسب `updated_at` يفوز، مع دمج حقل `done` لكل خطوة في `plan` بمطابقة نص `step`.
 7. Realtime عبر `postgres_changes` لتحديث الواجهة فوراً، وزر **"⬆️ ارفع أفكاري المحلية"** عند أول دخول دون حذف أو تكرار.
 **معايير القبول (المساعد):** اختبارات لدوال التحويل، ودمج الخطة المتعارضة، ومنطق `outbox` وإعادة المحاولة؛ `npm run build` و`npm test` و`npm run lint` تمر بلا أخطاء.
-**دليل المساعد:** أُنشئ SQL والـ RLS في `supabase/migrations/001_m2_initial.sql`؛ و`SupabaseStore` و`SyncManager` ودوال التحويل و`mergeIdeaConflict` في `src/store/`؛ `npm.cmd run build` نجح في `9.35s`؛ `npm.cmd test` مرّ بـ `32/32` اختباراً (منها 4 اختبارات في `src/store/sync.test.ts`)؛ `npm.cmd run lint` مرّ بـ `0` أخطاء.
+**دليل المساعد:** أُنشئ SQL والـ RLS في `supabase/migrations/001_m2_initial.sql`؛ و`SupabaseStore` و`SyncManager` ودوال التحويل و`mergeIdeaConflict` في `src/store/`؛ `npm.cmd run build` نجح في `9.35s`؛ `npm.cmd test` مرّ بـ `32/32` اختباراً (منها 4 اختبارات في `src/store/sync.test.ts`)؛ `npm.cmd run lint` مرّ بـ `0` أخطاء؛ وأكّد المستخدم الإعداد والمزامنة بـ«تم».
 **🛑 يدوياً:** أنشئ مشروع Supabase، شغّل `supabase/migrations/001_m2_initial.sql` في SQL Editor، فعّل Email provider وأضف Redirect URLs، ضع `VITE_SUPABASE_URL` و`VITE_SUPABASE_ANON_KEY` في `.env` وVercel، ثم تأكد: فكرة تُنشأ على الهاتف تظهر على الحاسوب، والعكس، ويعمل التعديل دون إنترنت ثم يُزامَن.
 
 ## S10: `llm-proxy` (إخفاء مفتاح الـ AI) 🛑
