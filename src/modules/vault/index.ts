@@ -22,6 +22,10 @@ export const vaultModule: AppModule = {
         idea.lifecycle = 'prototype_generated';
         void save();
       }
+    } else if (event.type === 'idea:updated') {
+      if (typeof document !== 'undefined' && document.getElementById('grid')) {
+        home();
+      }
     }
   },
 };

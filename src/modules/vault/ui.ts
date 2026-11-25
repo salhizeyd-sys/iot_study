@@ -15,10 +15,15 @@ import {
 import {
   CURRENT_SCHEMA_VERSION,
   S,
+  SyncStateSnapshot,
+  isSupabaseConfigured,
   migrate,
   save,
+  signInWithMagicLink,
+  signOutSupabase,
   statusToLifecycle,
   store,
+  syncManager,
 } from '../../store';
 import {
   buildProjectContext,
@@ -742,12 +747,74 @@ export const exp = async (id: string, t: 'md' | 'json'): Promise<void> => {
   }
 };
 
+export function renderSyncPill(snap: SyncStateSnapshot): void {
+  const pill = $('#sync-pill');
+  if (!pill) return;
+
+  pill.className = 'sync-pill';
+  if (!isSupabaseConfigured()) {
+    pill.textContent = '⚪ محلي';
+    return;
+  }
+  if (!snap.user) {
+    pill.textContent = '🔑 دخول للمزامنة';
+    return;
+  }
+  if (snap.status === 'synced') {
+    pill.classList.add('ok');
+    pill.textContent = '🟢 متزامن';
+  } else if (snap.status === 'syncing') {
+    pill.classList.add('wn');
+    pill.textContent = '🔄 يزامن…';
+  } else if (snap.status === 'pending') {
+    pill.classList.add('wn');
+    pill.textContent = `🟡 بانتظار المزامنة (${snap.pendingCount})`;
+  } else if (snap.status === 'offline') {
+    pill.classList.add('wn');
+    pill.textContent = snap.pendingCount
+      ? `🟠 غير متصل (${snap.pendingCount})`
+      : '🟠 غير متصل';
+  } else if (snap.status === 'error') {
+    pill.classList.add('er');
+    pill.textContent = '🔴 تعذّر التزامن';
+  } else {
+    pill.textContent = '⚪ محلي';
+  }
+}
+
 export function openSettings(): void {
   setNavActive('settings');
   const set = $('#set') as HTMLDialogElement | null;
   if (!set) return;
   const s = S.settings;
+  const syncSnap = syncManager.getSnapshot();
+  const supaReady = isSupabaseConfigured();
+
+  let accountHtml = '';
+  if (!supaReady) {
+    accountHtml = `<div class="warn"><b>☁️ المزامنة السحابية (Supabase):</b> غير مفعّلة محلياً بعد (أضف <code>VITE_SUPABASE_URL</code> و<code>VITE_SUPABASE_ANON_KEY</code>).</div>`;
+  } else if (!syncSnap.user) {
+    accountHtml = `<div class="warn" id="auth-box">
+      <b>☁️ الحساب والمزامنة (Magic Link)</b>
+      <label for="auth-email">البريد الإلكتروني</label>
+      <div class="bar" style="margin-bottom:0">
+        <input id="auth-email" type="email" dir="ltr" placeholder="name@example.com">
+        <button type="button" class="btn" id="magic-btn" onclick="sendMagicLink()">✉️ إرسال رابط الدخول</button>
+      </div>
+    </div>`;
+  } else {
+    accountHtml = `<div class="warn" id="auth-box">
+      <div><b>☁️ متصل بحساب:</b> <span dir="ltr">${esc(syncSnap.user.email || syncSnap.user.id)}</span></div>
+      <div class="bar" style="margin-bottom:0">
+        <button type="button" class="btn" onclick="uploadLocalIdeas()">⬆️ ارفع أفكاري المحلية</button>
+        <button type="button" class="btn g" onclick="syncNow()">🔄 مزامنة الآن</button>
+        <button type="button" class="btn d" onclick="logoutSupabase()">🚪 تسجيل الخروج</button>
+      </div>
+    </div>`;
+  }
+
   set.innerHTML = `<div class="bar" style="justify-content:space-between"><h2 style="margin:0">الإعدادات</h2><button class="btn g" onclick="set.close()" aria-label="إغلاق">✕</button></div>
+  ${accountHtml}
   <label>المزوّد</label><select id="sp" onchange="const sm = document.getElementById('sm'); if(sm) sm.value=MODELS[this.value]||''"><option value="gemini">Gemini</option><option value="openai">OpenAI / متوافق (OpenRouter, Groq, Ollama)</option><option value="anthropic">Anthropic</option></select>
   <label>النموذج</label><input id="sm" value="${esc(s.model)}">
   <label>مفتاح API (يبقى في متصفحك فقط)</label><input id="sk" type="password" value="${esc(
@@ -817,6 +884,59 @@ export const backupIdeas = (): void => {
   dl('idea-vault-backup.json', JSON.stringify(S.ideas, null, 2), 'application/json');
 };
 
+export async function sendMagicLink(): Promise<void> {
+  const emailEl = $('#auth-email') as HTMLInputElement | null;
+  const btn = $('#magic-btn') as HTMLButtonElement | null;
+  const email = emailEl?.value.trim() || '';
+  if (!email) {
+    toast('أدخل البريد الإلكتروني أولاً');
+    return;
+  }
+  if (btn) btn.disabled = true;
+  try {
+    await signInWithMagicLink(email);
+    toast('أُرسل رابط الدخول إلى بريدك الإلكتروني');
+  } catch (e: any) {
+    toast('⚠️ ' + (e?.message || 'تعذّر إرسال رابط الدخول'));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+export async function uploadLocalIdeas(): Promise<void> {
+  toast('جارٍ رفع أفكارك المحلية بدون تكرار…');
+  try {
+    const res = await syncManager.uploadLocalData();
+    home();
+    toast(`تم رفع ${res.ideasUploaded} فكرة و${res.prototypesUploaded} نموذجاً`);
+  } catch (e: any) {
+    toast('⚠️ ' + (e?.message || 'تعذّر رفع البيانات'));
+  }
+}
+
+export async function syncNow(): Promise<void> {
+  toast('جارٍ المزامنة…');
+  try {
+    await syncManager.flushOutbox();
+    await syncManager.pullFromRemote();
+    home();
+    toast('اكتملت المزامنة');
+  } catch (e: any) {
+    toast('⚠️ ' + (e?.message || 'تعذّرت المزامنة'));
+  }
+}
+
+export async function logoutSupabase(): Promise<void> {
+  try {
+    await signOutSupabase();
+    await syncManager.setUser(null);
+    openSettings();
+    toast('تم تسجيل الخروج (بياناتك المحلية محفوظة)');
+  } catch (e: any) {
+    toast('⚠️ ' + (e?.message || 'تعذّر تسجيل الخروج'));
+  }
+}
+
 export async function importFile(f: File): Promise<void> {
   const set = $('#set') as HTMLDialogElement | null;
   try {
@@ -873,5 +993,9 @@ export function setupWindowGlobals(): void {
   g.saveSettings = saveSettings;
   g.backupIdeas = backupIdeas;
   g.importFile = importFile;
+  g.sendMagicLink = sendMagicLink;
+  g.uploadLocalIdeas = uploadLocalIdeas;
+  g.syncNow = syncNow;
+  g.logoutSupabase = logoutSupabase;
   g.toast = toast;
 }

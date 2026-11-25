@@ -1,5 +1,11 @@
 import { DBSchema, IDBPDatabase, openDB } from 'idb';
-import { Idea, PrototypeRecord, PrototypeV1, Settings } from '../core';
+import {
+  Idea,
+  OutboxEntry,
+  PrototypeRecord,
+  PrototypeV1,
+  Settings,
+} from '../core';
 import { CURRENT_SCHEMA_VERSION, migrate } from './migrate';
 import { MigrationCapableStore, PrototypeStore, Store } from './types';
 
@@ -17,11 +23,17 @@ interface IdeaVaultDB extends DBSchema {
     value: PrototypeRecord;
     indexes: { by_idea: string };
   };
+  outbox: {
+    key: string;
+    value: OutboxEntry;
+    indexes: { by_created: number };
+  };
 }
 
 const IDEAS_STORE = 'ideas';
 const META_STORE = 'meta';
 const PROTOTYPES_STORE = 'idea_prototypes';
+const OUTBOX_STORE = 'outbox';
 const SETTINGS_KEY = 'settings';
 const MIGRATED_KEY = 'localStorageMigrated';
 
@@ -34,7 +46,7 @@ export class IndexedDBStore
 
   private getDB(): Promise<IDBPDatabase<IdeaVaultDB>> {
     if (!this.dbPromise) {
-      this.dbPromise = openDB<IdeaVaultDB>(this.dbName, 2, {
+      this.dbPromise = openDB<IdeaVaultDB>(this.dbName, 3, {
         upgrade(db) {
           if (!db.objectStoreNames.contains(IDEAS_STORE)) {
             db.createObjectStore(IDEAS_STORE, { keyPath: 'id' });
@@ -43,8 +55,16 @@ export class IndexedDBStore
             db.createObjectStore(META_STORE);
           }
           if (!db.objectStoreNames.contains(PROTOTYPES_STORE)) {
-            const protoStore = db.createObjectStore(PROTOTYPES_STORE, { keyPath: 'id' });
+            const protoStore = db.createObjectStore(PROTOTYPES_STORE, {
+              keyPath: 'id',
+            });
             protoStore.createIndex('by_idea', 'idea_id');
+          }
+          if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
+            const outboxStore = db.createObjectStore(OUTBOX_STORE, {
+              keyPath: 'id',
+            });
+            outboxStore.createIndex('by_created', 'createdAt');
           }
         },
       });
@@ -92,6 +112,12 @@ export class IndexedDBStore
     await db.delete(IDEAS_STORE, id);
   }
 
+  async listAllPrototypes(): Promise<PrototypeRecord[]> {
+    const db = await this.getDB();
+    const items = await db.getAll(PROTOTYPES_STORE);
+    return items.sort((a, b) => b.revision - a.revision);
+  }
+
   async listPrototypes(ideaId: string): Promise<PrototypeRecord[]> {
     const db = await this.getDB();
     const items = await db.getAllFromIndex(PROTOTYPES_STORE, 'by_idea', ideaId);
@@ -101,6 +127,11 @@ export class IndexedDBStore
   async getLatestPrototype(ideaId: string): Promise<PrototypeRecord | undefined> {
     const list = await this.listPrototypes(ideaId);
     return list[0];
+  }
+
+  async putPrototypeRecord(record: PrototypeRecord): Promise<void> {
+    const db = await this.getDB();
+    await db.put(PROTOTYPES_STORE, record);
   }
 
   async savePrototypeRevision(
@@ -125,6 +156,65 @@ export class IndexedDBStore
     };
     await db.put(PROTOTYPES_STORE, record);
     return record;
+  }
+
+  async listOutbox(): Promise<OutboxEntry[]> {
+    const db = await this.getDB();
+    const items = await db.getAllFromIndex(OUTBOX_STORE, 'by_created');
+    return items.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async enqueueOutbox(
+    entry: Omit<OutboxEntry, 'id' | 'createdAt' | 'attempts'> & {
+      id?: string;
+      createdAt?: number;
+      attempts?: number;
+    }
+  ): Promise<OutboxEntry> {
+    const db = await this.getDB();
+    const existing = await db.getAll(OUTBOX_STORE);
+    const duplicate = existing.find(
+      (e) => e.table === entry.table && e.recordId === entry.recordId
+    );
+
+    const record: OutboxEntry = {
+      id:
+        duplicate?.id ||
+        entry.id ||
+        (typeof globalThis.crypto?.randomUUID === 'function'
+          ? globalThis.crypto.randomUUID()
+          : `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+      table: entry.table,
+      op: entry.op,
+      recordId: entry.recordId,
+      payload: entry.payload,
+      createdAt: duplicate?.createdAt ?? entry.createdAt ?? Date.now(),
+      attempts: entry.attempts ?? 0,
+      lastError: entry.lastError,
+    };
+    await db.put(OUTBOX_STORE, record);
+    return record;
+  }
+
+  async removeOutbox(id: string): Promise<void> {
+    const db = await this.getDB();
+    await db.delete(OUTBOX_STORE, id);
+  }
+
+  async updateOutboxAttempt(id: string, lastError: string): Promise<void> {
+    const db = await this.getDB();
+    const item = await db.get(OUTBOX_STORE, id);
+    if (!item) return;
+    await db.put(OUTBOX_STORE, {
+      ...item,
+      attempts: (item.attempts || 0) + 1,
+      lastError,
+    });
+  }
+
+  async clearOutbox(): Promise<void> {
+    const db = await this.getDB();
+    await db.clear(OUTBOX_STORE);
   }
 
   async getSettings(): Promise<Settings | undefined> {

@@ -7,7 +7,7 @@ import {
   bus,
 } from '../../../core';
 import { buildProjectContext, callLLM } from '../../../llm';
-import { store } from '../../../store';
+import { savePrototypeRevisionSynced } from '../../../store';
 import { checkEsp32Pins, PinCheckResult } from './pinChecker';
 import { parsePrototypeResponse } from './schema';
 import { hasHardcodedSecrets, sysPrototype } from './template';
@@ -168,7 +168,7 @@ export async function generatePrototype(
     warnings: [...data.warnings, ...extraWarnings],
   };
 
-  const record = await store.savePrototypeRevision(
+  const record = await savePrototypeRevisionSynced(
     idea.id,
     finalData,
     options.revisionFeedback || 'توليد أولي'

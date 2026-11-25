@@ -105,6 +105,7 @@ export interface Idea {
   id: string;
   schemaVersion?: number;
   created: number;
+  updatedAt?: number;
   name: string;
   domain: string;
   type: IdeaType;
@@ -187,6 +188,25 @@ export interface AppEventMap {
 export type AppEvent = {
   [K in keyof AppEventMap]: { type: K; payload: AppEventMap[K] };
 }[keyof AppEventMap];
+
+export type SyncStatus =
+  | 'local_only'
+  | 'synced'
+  | 'syncing'
+  | 'pending'
+  | 'offline'
+  | 'error';
+
+export interface OutboxEntry {
+  id: string;
+  table: 'ideas' | 'idea_prototypes';
+  op: 'upsert' | 'delete';
+  recordId: string;
+  payload?: unknown;
+  createdAt: number;
+  attempts: number;
+  lastError?: string;
+}
 
 export interface AppModule {
   id: string;

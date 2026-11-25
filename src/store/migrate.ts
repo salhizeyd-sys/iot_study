@@ -17,7 +17,7 @@ import {
 } from '../core';
 import { MigrationCapableStore, Store } from './types';
 
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 export const LEGACY_STORAGE_KEY = 'ideavault.v1';
 export const LEGACY_BACKUP_KEY = 'ideavault.v1.backup';
 
@@ -79,10 +79,16 @@ export function migrate(raw: unknown): Idea {
       }))
     : [];
 
+  const created =
+    typeof r.created === 'number' && Number.isFinite(r.created) ? r.created : Date.now();
+  const updatedAt =
+    typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? r.updatedAt : created;
+
   const migrated: Idea = {
     id: typeof r.id === 'string' && r.id.trim() ? r.id : randomId(),
     schemaVersion: CURRENT_SCHEMA_VERSION,
-    created: typeof r.created === 'number' && Number.isFinite(r.created) ? r.created : Date.now(),
+    created,
+    updatedAt,
     name: typeof r.name === 'string' && r.name.trim() ? r.name : 'فكرة بلا اسم',
     domain: typeof r.domain === 'string' && r.domain.trim() ? r.domain : 'عام',
     type,

@@ -60,11 +60,49 @@ header {
   z-index: 10;
 }
 
+.header-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-shrink: 0;
+}
+
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--bd);
+  background: var(--bg);
+  color: var(--mu);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sync-pill.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.sync-pill.wn {
+  color: var(--wn);
+  border-color: var(--wn);
+}
+
+.sync-pill.er {
+  color: var(--er);
+  border-color: var(--er);
 }
 
 h1 {

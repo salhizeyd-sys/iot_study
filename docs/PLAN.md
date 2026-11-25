@@ -14,7 +14,7 @@
 | S6 | النموذج الأولي (كود + توصيل + تحذيرات) | ✅ |
 | S7 | لوحة التحكم والمحاكاة على الهاتف | ✅ |
 | S8 | **اختبار الهاتف (نهاية M1)** | ✅ |
-| S9 | Supabase: حساب + مزامنة | ⬜ 🛑 |
+| S9 | Supabase: حساب + مزامنة | ⏳ 🛑 بانتظار التحقق اليدوي |
 | S10 | llm-proxy (إخفاء مفتاح الـ AI) | ⬜ 🛑 |
 | S11 | وضع التركيز | ⬜ |
 | S12 | حاسوب: ترجمة محلية + رفع + تهيئة | ⬜ 🛑 |
@@ -101,11 +101,31 @@
 
 # M2: الحساب والمزامنة (بعد نجاح M1)
 
-قبل البدء: اطلب من المساعد تفصيل الخطوات (مهام ومعايير) بناءً على `SUPABASE.md` والقسم 7 من المعمارية.
+تفصيل الخطوات بناءً على `docs/SUPABASE.md` والقسم 7 من `docs/ARCHITECTURE.md` و`docs/PROMPTS_V3.md`:
 
-- **S9 🛑** Supabase: SQL وRLS (+ `memory`, `lifecycle`)، دخول بالبريد، `SupabaseStore` + outbox + Realtime، رفع بياناتي المحلية. *🛑 أنشئ مشروع Supabase، شغّل SQL، ضع المتغيرات، أضف Redirect URLs.* القبول: فكرة تُنشأ على الهاتف تظهر على الحاسوب، والعكس، ويعمل التعديل دون إنترنت ثم يُزامَن.
-- **S10 🛑** `llm-proxy`: Edge Function، والمفتاح سر في Supabase، وإزالة المفتاح من المتصفح. *🛑 اضبط السر وانشر الدالة.* القبول: لا مفتاح AI في الشبكة ولا في التخزين المحلي.
-- **S11** وضع التركيز: القسم الثاني من البرومت 4 (V2) أو الخطوة 4 من V3 (حد maxDoing، تبريد 7 أيام، شريط النسب).
+## S9: Supabase: الحساب والمزامنة 🛑
+**المهام:**
+1. ملف `supabase/migrations/001_m2_initial.sql`: جدول `public.ideas` (مع `memory`, `lifecycle`, `plan_history`, `updated_at` trigger، فهرس `(user_id, status)`، وسياسة RLS)، وجدول `public.idea_prototypes` (مع `user_id`, `idea_id`, `revision`, `schema_version`, `data jsonb`, `change_summary`, `created_at` وسياسة RLS)، وتفعيل Realtime عليهما.
+2. تثبيت `@supabase/supabase-js`، وإعداد `.env.example` وعميل Supabase (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` فقط بلا أسرار LLM أو `service_role`).
+3. تسجيل الدخول عبر Magic Link (البريد الإلكتروني فقط) مع واجهة عربية بسيطة وزر خروج في الإعدادات.
+4. `SupabaseStore` بنفس واجهة `Store` (`list/get/put/remove`) مع دوال التحويل الصريحة (`ideaToRow` / `rowToIdea`, `prototypeToRow` / `rowToPrototype`).
+5. معمارية محلي-أولاً: القراءة والكتابة على IndexedDB فوراً، وطابور `outbox` يُرسل عند الاتصال ويُعاد عند الفشل، ومؤشر حالة (`متزامن` / `بانتظار المزامنة` / `غير متصل` / `محلي فقط`).
+6. حل التعارض: الأحدث حسب `updated_at` يفوز، مع دمج حقل `done` لكل خطوة في `plan` بمطابقة نص `step`.
+7. Realtime عبر `postgres_changes` لتحديث الواجهة فوراً، وزر **"⬆️ ارفع أفكاري المحلية"** عند أول دخول دون حذف أو تكرار.
+**معايير القبول (المساعد):** اختبارات لدوال التحويل، ودمج الخطة المتعارضة، ومنطق `outbox` وإعادة المحاولة؛ `npm run build` و`npm test` و`npm run lint` تمر بلا أخطاء.
+**دليل المساعد:** أُنشئ SQL والـ RLS في `supabase/migrations/001_m2_initial.sql`؛ و`SupabaseStore` و`SyncManager` ودوال التحويل و`mergeIdeaConflict` في `src/store/`؛ `npm.cmd run build` نجح في `9.35s`؛ `npm.cmd test` مرّ بـ `32/32` اختباراً (منها 4 اختبارات في `src/store/sync.test.ts`)؛ `npm.cmd run lint` مرّ بـ `0` أخطاء.
+**🛑 يدوياً:** أنشئ مشروع Supabase، شغّل `supabase/migrations/001_m2_initial.sql` في SQL Editor، فعّل Email provider وأضف Redirect URLs، ضع `VITE_SUPABASE_URL` و`VITE_SUPABASE_ANON_KEY` في `.env` وVercel، ثم تأكد: فكرة تُنشأ على الهاتف تظهر على الحاسوب، والعكس، ويعمل التعديل دون إنترنت ثم يُزامَن.
+
+## S10: `llm-proxy` (إخفاء مفتاح الـ AI) 🛑
+**المهام:**
+1. Edge Function في `supabase/functions/llm-proxy/index.ts` تتحقق من JWT المستخدم، وتحدّ المعدل لكل مستخدم، وتستدعي مزوّد الـ AI بمفتاح محفوظ في أسرار Supabase.
+2. تحديث `src/llm/index.ts` لاستخدام `llm-proxy` افتراضياً عند تسجيل الدخول وإزالة تخزين/إرسال مفتاح الـ AI من المتصفح عند تفعيل البروكسي، مع مخططات `zod` في `src/llm/schemas.ts`.
+**معايير القبول (المساعد):** اختبارات لعميل `llm-proxy` ومخططات `zod`؛ البناء والاختبارات وESLint تمر.
+**🛑 يدوياً:** اضبط السر في Supabase وانشر الدالة، وتأكد من Network وStorage أنه لا يوجد أي مفتاح AI في المتصفح.
+
+## S11: وضع التركيز
+**المهام:** تفعيل علم `focus: true`؛ صفحة «🎯 التركيز» داخل `modules/vault/` تعرض مشروعاً نشطاً واحداً مع الخطوة التالية وشريط تقدم؛ نافذة اختيار مشروع لإيقافه عند تجاوز `maxDoing`؛ تبريد 7 أيام (`cooldown_until` مع migration) مع عدّاد وزر تجاوز يتطلب سبباً؛ شريط نسب التوافق.
+**معايير القبول:** اختبارات لمنطق التبريد وتجاوز `maxDoing` وحساب النسب؛ البناء والاختبارات وESLint تمر.
 
 # M3: الحاسوب (بعد نجاح M2)
 
