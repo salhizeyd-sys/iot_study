@@ -65,12 +65,20 @@ export async function initStore(): Promise<void> {
   const client = getSupabaseClient();
   if (client) {
     const user = await getCurrentSupabaseUser().catch(() => null);
+    if (user && S.settings.key) {
+      S.settings.key = '';
+      await store.saveSettings(S.settings);
+    }
     await syncManager.setUser(user ? { id: user.id, email: user.email } : null);
 
     if (!onlineListenersBound && typeof window !== 'undefined') {
       onlineListenersBound = true;
       client.auth.onAuthStateChange((_event, session) => {
         const u = session?.user;
+        if (u && S.settings.key) {
+          S.settings.key = '';
+          void store.saveSettings(S.settings);
+        }
         void syncManager.setUser(u ? { id: u.id, email: u.email } : null);
       });
       window.addEventListener('online', () => {

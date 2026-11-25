@@ -26,8 +26,11 @@ import {
   syncManager,
 } from '../../store';
 import {
+  IdeaCardSchema,
+  PlanRevisionSchema,
   buildProjectContext,
   callLLM,
+  parseStructuredWithRetry,
   summarizeProjectMemory,
 } from '../../llm';
 import {
@@ -285,21 +288,32 @@ async function applyPlanRevision(idea: Idea, messages: ChatMessage[]): Promise<v
     tokenBudget: S.settings.contextBudget,
   });
   const completedSteps = (idea.plan || []).filter((p) => p.done);
-  const r = await callLLM(
-    [
-      ...messages,
-      {
-        role: 'user',
-        content: 'عدّل الخطة المتبقية وأخرج JSON فقط بصيغة {"plan":[{"step":"","detail":""}]}.',
-      },
-    ],
-    sysUpdatePlan(ctx, completedSteps)
+  const promptMessages: ChatMessage[] = [
+    ...messages,
+    {
+      role: 'user',
+      content: 'عدّل الخطة المتبقية وأخرج JSON فقط بصيغة {"plan":[{"step":"","detail":""}]}.',
+    },
+  ];
+  const system = sysUpdatePlan(ctx, completedSteps);
+  const firstRaw = await callLLM(promptMessages, system);
+  const validated = await parseStructuredWithRetry(
+    PlanRevisionSchema,
+    firstRaw,
+    (err) =>
+      callLLM(
+        [
+          ...promptMessages,
+          { role: 'assistant', content: firstRaw },
+          {
+            role: 'user',
+            content: `أصلح صيغة JSON وفق المخطط المطلوب (${err}) وأخرج JSON فقط.`,
+          },
+        ],
+        system
+      )
   );
-  const m = r.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('لم يُرجع المساعد JSON صالحاً لتعديل الخطة');
-  const parsed = JSON.parse(m[0]);
-  const incoming = Array.isArray(parsed?.plan) ? parsed.plan : [];
-  const { nextPlan, historyEntry } = mergeUpdatedPlan(idea.plan || [], incoming);
+  const { nextPlan, historyEntry } = mergeUpdatedPlan(idea.plan || [], validated.plan);
   idea.plan_history = [...(idea.plan_history || []), historyEntry];
   idea.plan = nextPlan;
   idea.chat = messages.slice();
@@ -330,20 +344,32 @@ export const finalize = () =>
   guard(async () => {
     if (!chat.length) return toast('ناقش الفكرة أولاً');
     toast('جارٍ بناء الخطة…');
-    const r = await callLLM(
-      [
-        ...chat,
-        {
-          role: 'user',
-          content: 'حوّل نقاشنا إلى بطاقة المشروع النهائية بصيغة JSON فقط.',
-        },
-      ],
-      sysPlan()
+    const promptMessages: ChatMessage[] = [
+      ...chat,
+      {
+        role: 'user',
+        content: 'حوّل نقاشنا إلى بطاقة المشروع النهائية بصيغة JSON فقط.',
+      },
+    ];
+    const system = sysPlan();
+    const r = await callLLM(promptMessages, system);
+    const validated = await parseStructuredWithRetry(
+      IdeaCardSchema,
+      r,
+      (err) =>
+        callLLM(
+          [
+            ...promptMessages,
+            { role: 'assistant', content: r },
+            {
+              role: 'user',
+              content: `استجابتك السابقة غير مكتملة (${err}). أخرج بطاقة المشروع بصيغة JSON فقط.`,
+            },
+          ],
+          system
+        )
     );
-    const m = r.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('لم يُرجع المساعد JSON صالحاً، أعد المحاولة');
-    const parsed = JSON.parse(m[0]);
-    const normalized = norm(parsed);
+    const normalized = norm(validated);
     const existing = activeDraftId
       ? S.ideas.find((x) => x.id === activeDraftId)
       : undefined;
@@ -813,16 +839,21 @@ export function openSettings(): void {
     </div>`;
   }
 
+  const proxyActive = Boolean(supaReady && syncSnap.user);
+  const apiKeyHtml = proxyActive
+    ? `<div class="warn" id="proxy-key-notice">🔒 مفتاح الـ AI محفوظ بأمان داخل Supabase (<code>llm-proxy</code>) ولا يُخزَّن أو يُرسَل من المتصفح.</div>`
+    : `<label>مفتاح API (يبقى في متصفحك فقط)</label><input id="sk" type="password" value="${esc(
+        s.key
+      )}">
+       <label>Base URL (للمزوّد المتوافق مع OpenAI فقط)</label><input id="sb" dir="ltr" value="${esc(
+         s.base
+       )}">`;
+
   set.innerHTML = `<div class="bar" style="justify-content:space-between"><h2 style="margin:0">الإعدادات</h2><button class="btn g" onclick="set.close()" aria-label="إغلاق">✕</button></div>
   ${accountHtml}
   <label>المزوّد</label><select id="sp" onchange="const sm = document.getElementById('sm'); if(sm) sm.value=MODELS[this.value]||''"><option value="gemini">Gemini</option><option value="openai">OpenAI / متوافق (OpenRouter, Groq, Ollama)</option><option value="anthropic">Anthropic</option></select>
   <label>النموذج</label><input id="sm" value="${esc(s.model)}">
-  <label>مفتاح API (يبقى في متصفحك فقط)</label><input id="sk" type="password" value="${esc(
-    s.key
-  )}">
-  <label>Base URL (للمزوّد المتوافق مع OpenAI فقط)</label><input id="sb" dir="ltr" value="${esc(
-    s.base
-  )}">
+  ${apiKeyHtml}
   <label>أهدافي التعليمية (يقرأها المساعد في كل نقاش)</label><textarea id="sg" rows="3">${esc(
     s.goals
   )}</textarea>
@@ -862,12 +893,14 @@ export function saveSettings(): void {
   const sl = $('#sl') as HTMLSelectElement | null;
   const set = $('#set') as HTMLDialogElement | null;
 
+  const proxyActive = Boolean(isSupabaseConfigured() && syncManager.getSnapshot().user);
+
   S.settings = mergeSettings({
     ...S.settings,
     provider: sp ? sp.value : 'gemini',
     model: sm ? sm.value.trim() : '',
-    key: sk ? sk.value.trim() : '',
-    base: sb ? sb.value.trim() : '',
+    key: proxyActive ? '' : sk ? sk.value.trim() : '',
+    base: sb ? sb.value.trim() : S.settings.base,
     goals: sg ? sg.value.trim() : '',
     maxDoing: sx ? +sx.value || 2 : 2,
     contextBudget: scb ? +scb.value || 1600 : 1600,

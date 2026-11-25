@@ -1,5 +1,10 @@
 import { ChatMessage, Idea } from '../core';
-import { S } from '../store';
+import {
+  S,
+  getSupabaseClient,
+  getSupabaseConfig,
+  save,
+} from '../store';
 import { sysMemorySummary } from '../prompts';
 
 export {
@@ -8,11 +13,91 @@ export {
   DEFAULT_CONTEXT_TOKEN_BUDGET,
   type ProjectContextOptions,
 } from './context';
+export {
+  IdeaCardSchema,
+  PlanRevisionSchema,
+  extractJsonFromText,
+  parseWithSchema,
+  parseStructuredWithRetry,
+  type IdeaCardOutput,
+  type PlanRevisionOutput,
+} from './schemas';
+
+export interface ProxyAuthContext {
+  url: string;
+  anonKey: string;
+  accessToken: string;
+}
+
+export async function getActiveProxyAuth(): Promise<ProxyAuthContext | null> {
+  const cfg = getSupabaseConfig();
+  const client = getSupabaseClient();
+  if (!cfg || !client) return null;
+
+  const { data } = await client.auth.getSession();
+  const accessToken = data.session?.access_token;
+  if (!accessToken) return null;
+
+  return {
+    url: cfg.url.replace(/\/$/, ''),
+    anonKey: cfg.anonKey,
+    accessToken,
+  };
+}
+
+export async function clearBrowserApiKeyIfProxyActive(): Promise<boolean> {
+  const proxy = await getActiveProxyAuth();
+  if (!proxy) return false;
+  if (S.settings.key) {
+    S.settings.key = '';
+    await save();
+  }
+  return true;
+}
+
+export async function callLLMProxy(
+  proxy: ProxyAuthContext,
+  messages: ChatMessage[],
+  system: string,
+  provider: string,
+  model: string
+): Promise<string> {
+  const r = await fetch(`${proxy.url}/functions/v1/llm-proxy`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      apikey: proxy.anonKey,
+      Authorization: `Bearer ${proxy.accessToken}`,
+    },
+    body: JSON.stringify({
+      provider,
+      model,
+      system,
+      messages,
+    }),
+  });
+
+  const d: any = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    throw new Error(d.error || 'خطأ من خادم المساعد (llm-proxy)');
+  }
+  return String(d.text ?? '');
+}
 
 export async function callLLM(messages: ChatMessage[], system: string): Promise<string> {
   const { provider: p, key, model, base } = S.settings;
+
+  const proxy = await getActiveProxyAuth();
+  if (proxy) {
+    if (S.settings.key) {
+      S.settings.key = '';
+      void save();
+    }
+    return callLLMProxy(proxy, messages, system, p, model);
+  }
+
   if (!key && !/localhost|127\.0\.0\.1/.test(base)) {
-    throw new Error('أضف مفتاح API من الإعدادات ⚙️');
+    throw new Error('سجّل الدخول للمزامنة أو أضف مفتاح API من الإعدادات ⚙️');
   }
 
   let r: Response;
