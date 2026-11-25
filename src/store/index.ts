@@ -36,6 +36,16 @@ export {
   type RemoteSyncStore,
 } from './supabase';
 export { SyncManager, type SyncStateSnapshot } from './sync';
+export {
+  getLastIssuedToken,
+  sha256Hex,
+  generateDeviceToken,
+  isDeviceOnline,
+  registerDeviceForIdea,
+  listDevicesForIdea,
+  listRecentTelemetry,
+  subscribeIdeaTelemetry,
+} from './telemetry';
 
 export const store = new IndexedDBStore();
 

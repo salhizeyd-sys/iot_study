@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { caps, mergeSettings } from '../../core';
+import { bus, caps, mergeSettings, registry } from '../../core';
 import { S } from '../../store';
+import { vaultModule } from './index';
 import {
   home,
   openIdea,
@@ -231,6 +232,15 @@ describe('mobile UI & quick capture', () => {
       { step: 'تجهيز القطع', detail: 'ESP32', done: true },
       { step: 'توصيل الصمام عبر MOSFET', detail: 'GPIO5', done: false },
     ]);
+
+    registry.clear();
+    bus.clear();
+    registry.register(vaultModule);
+    const unbind = registry.bindToBus(bus, () => S.settings);
+    bus.emit('device:online', { deviceId: 'dev-1', ideaId: 'proj-1' });
+    expect(S.ideas[0].lifecycle).toBe('online');
+    expect(document.getElementById('toast')?.textContent).toContain('الجهاز متصل الآن');
+    unbind();
 
     vi.unstubAllGlobals();
   });

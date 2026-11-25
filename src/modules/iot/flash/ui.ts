@@ -5,7 +5,7 @@ import {
   caps,
   checkEsp32Pins,
 } from '../../../core';
-import { S, getSupabaseConfig, save, store } from '../../../store';
+import { S, getLastIssuedToken, getSupabaseConfig, save, store } from '../../../store';
 import { esc, toast } from '../../../ui';
 import {
   DEFAULT_COMPILE_URL,
@@ -184,7 +184,9 @@ export function renderFlashTab(idea: Idea): HTMLElement {
         <label>كلمة مرور Wi-Fi (تُرسل مباشرة عبر USB ولا تُخزّن)</label>
         <input data-role="prov-pass" type="password" dir="ltr" placeholder="••••••••">
         <label>رمز الجهاز (Device Token)</label>
-        <input data-role="prov-token" dir="ltr" placeholder="سيُنشأ تلقائياً في S13 أو أدخله يدوياً">
+        <input data-role="prov-token" dir="ltr" value="${esc(
+          getLastIssuedToken(idea.id)
+        )}" placeholder="سجّل جهازاً من تبويب الأجهزة والبث الحي أو ألصق الرمز هنا">
         <label>عنوان الاستقبال (Ingest URL)</label>
         <input data-role="prov-url" dir="ltr" value="${esc(defaultIngestUrl)}">
         <div class="bar" style="margin-bottom:0">

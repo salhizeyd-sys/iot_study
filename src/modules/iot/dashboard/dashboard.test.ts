@@ -2,6 +2,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Idea, PrototypeV1, Widget } from '../../../core';
+import * as supaClientMod from '../../../store/supabaseClient';
 import { store } from '../../../store';
 import { SimulationController } from './simulator';
 import { renderDashboardTab } from './ui';
@@ -156,5 +157,14 @@ describe('iot dashboard & simulator (S7)', () => {
 
     simBtn.click();
     expect(tabEl.querySelector('[data-role="sim-status"]')?.textContent).toContain('متوقفة');
+
+    // Switch to live Realtime mode cleanly
+    vi.spyOn(supaClientMod, 'getSupabaseClient').mockReturnValue(null);
+    tabEl.querySelector<HTMLButtonElement>('[data-mode="live"]')?.click();
+    await vi.waitFor(() => {
+      expect(tabEl.querySelector('[data-role="live-badge"]')).not.toBeNull();
+      expect(tabEl.querySelector('[data-role="sim-state-line"]')?.textContent).toContain('البث الحي');
+    });
+    vi.restoreAllMocks();
   });
 });

@@ -41,13 +41,13 @@ export const FOCUS: Record<IdeaFocus, [string, string]> = {
   distraction: ['تشتيت', 'er'],
 };
 
-export const CURRENT_SETTINGS_VERSION = 3;
+export const CURRENT_SETTINGS_VERSION = 4;
 
 export const DEFAULT_FEATURES: FeatureFlags = {
   vault: true,
   'iot.prototype': true,
   'iot.dashboard': true,
-  'iot.telemetry': false,
+  'iot.telemetry': true,
   'iot.flash': true,
   'iot.ota': false,
   focus: true,
@@ -79,11 +79,12 @@ export function mergeSettings(partial?: Partial<Settings> | null): Settings {
     ...(partial?.features || {}),
   };
 
-  // Auto-enable released M1/M2/M3 modules for users upgrading from older settings
+  // Auto-enable released M1/M2/M3/M4 modules for users upgrading from older settings
   if (isLegacySettings) {
     mergedFeatures.vault = true;
     mergedFeatures['iot.prototype'] = true;
     mergedFeatures['iot.dashboard'] = true;
+    mergedFeatures['iot.telemetry'] = true;
     mergedFeatures['iot.flash'] = true;
     mergedFeatures.focus = true;
   }

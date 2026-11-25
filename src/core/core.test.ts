@@ -9,15 +9,15 @@ import {
 } from './index';
 
 describe('core architecture', () => {
-  it('enables vault, iot.prototype, iot.dashboard, iot.flash, and focus feature flags in current milestone', () => {
+  it('enables vault, iot.prototype, iot.dashboard, iot.telemetry, iot.flash, and focus feature flags in current milestone', () => {
     const settings = mergeSettings();
     expect(settings.features).toEqual(DEFAULT_FEATURES);
     expect(isFeatureEnabled(settings, 'vault')).toBe(true);
     expect(isFeatureEnabled(settings, 'iot.prototype')).toBe(true);
     expect(isFeatureEnabled(settings, 'iot.dashboard')).toBe(true);
+    expect(isFeatureEnabled(settings, 'iot.telemetry')).toBe(true);
     expect(isFeatureEnabled(settings, 'iot.flash')).toBe(true);
     expect(isFeatureEnabled(settings, 'focus')).toBe(true);
-    expect(isFeatureEnabled(settings, 'iot.telemetry')).toBe(false);
     expect(isFeatureEnabled(settings, 'iot.ota')).toBe(false);
   });
 
@@ -33,8 +33,8 @@ describe('core architecture', () => {
       onEvent: vaultHandler,
     });
     reg.register({
-      id: 'iot.telemetry',
-      enabled: (s) => isFeatureEnabled(s, 'iot.telemetry'),
+      id: 'iot.ota',
+      enabled: (s) => isFeatureEnabled(s, 'iot.ota'),
       onEvent: iotHandler,
     });
 
@@ -74,10 +74,11 @@ describe('core architecture', () => {
       },
     };
     const upgraded = mergeSettings(legacy as any);
-    expect(upgraded.settingsVersion).toBe(3);
+    expect(upgraded.settingsVersion).toBe(4);
     expect(upgraded.features.focus).toBe(true);
     expect(upgraded.features['iot.prototype']).toBe(true);
     expect(upgraded.features['iot.dashboard']).toBe(true);
+    expect(upgraded.features['iot.telemetry']).toBe(true);
     expect(upgraded.features['iot.flash']).toBe(true);
   });
 

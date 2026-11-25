@@ -184,7 +184,14 @@ export interface AppEventMap {
     lifecycle: IdeaLifecycle;
   };
   'prototype:generated': { ideaId: string; revision: number };
+  'device:registered': { deviceId: string; ideaId: string; rawToken?: string };
   'device:online': { deviceId: string; ideaId: string };
+  'telemetry:received': {
+    deviceId: string;
+    ideaId: string;
+    payload: Record<string, number | boolean | string>;
+    createdAt: number;
+  };
   'settings:changed': { settings: Settings };
 }
 
@@ -199,6 +206,26 @@ export type SyncStatus =
   | 'pending'
   | 'offline'
   | 'error';
+
+export interface DeviceRecord {
+  id: string;
+  user_id: string;
+  idea_id: string;
+  name: string;
+  board: string;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+export interface TelemetryReading {
+  id: string;
+  user_id: string;
+  device_id: string;
+  payload: Record<string, number | boolean | string>;
+  created_at: string;
+}
+
+export type DashboardMode = 'simulation' | 'live';
 
 export interface OutboxEntry {
   id: string;

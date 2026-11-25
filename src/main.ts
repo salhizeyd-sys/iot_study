@@ -10,11 +10,13 @@ import {
 } from './modules/vault';
 import { iotPrototypeModule } from './modules/iot/prototype';
 import { iotDashboardModule } from './modules/iot/dashboard';
+import { iotTelemetryModule } from './modules/iot/telemetry';
 import { iotFlashModule } from './modules/iot/flash';
 
 registry.register(vaultModule);
 registry.register(iotPrototypeModule);
 registry.register(iotDashboardModule);
+registry.register(iotTelemetryModule);
 registry.register(iotFlashModule);
 registry.bindToBus(bus, () => S.settings);
 
