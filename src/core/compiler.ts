@@ -23,6 +23,29 @@ export interface CompileLocalResult {
   logs: string;
 }
 
+export interface InstalledLibraryInfo {
+  name: string;
+  version: string;
+  sentence?: string;
+}
+
+export interface LibrarySearchItem {
+  name: string;
+  version: string;
+  author?: string;
+  sentence?: string;
+}
+
+export interface InstallLibraryResult {
+  ok: boolean;
+  name: string;
+  logs: string;
+}
+
+export interface CompileFailureError extends Error {
+  logs?: string;
+}
+
 export async function checkLocalCompiler(
   baseUrl: string = DEFAULT_COMPILE_URL
 ): Promise<LocalHealthResult> {
@@ -64,13 +87,69 @@ export async function compileSketchLocal(
 
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok || !data?.ok) {
-    throw new Error(data?.error || 'فشلت الترجمة المحلية عبر arduino-cli');
+    const error = new Error(
+      data?.error || 'فشلت الترجمة المحلية عبر arduino-cli'
+    ) as CompileFailureError;
+    error.logs = String(data?.logs || data?.error || error.message);
+    throw error;
   }
 
   return {
     ok: true,
     fqbn: data.fqbn || fqbn,
     bins: Array.isArray(data.bins) ? data.bins : [],
+    logs: String(data.logs || ''),
+  };
+}
+
+export async function listInstalledLibraries(
+  baseUrl: string = DEFAULT_COMPILE_URL
+): Promise<InstalledLibraryInfo[]> {
+  const url = baseUrl.replace(/\/$/, '') + '/libraries';
+  const res = await fetch(url);
+  const data: any = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || 'تعذّر قراءة المكتبات المثبتة');
+  }
+  return Array.isArray(data.libraries) ? data.libraries : [];
+}
+
+export async function searchArduinoLibraries(
+  query: string,
+  baseUrl: string = DEFAULT_COMPILE_URL
+): Promise<LibrarySearchItem[]> {
+  const clean = query.trim();
+  if (!clean) return [];
+  const url = `${baseUrl.replace(/\/$/, '')}/libraries/search?q=${encodeURIComponent(clean)}`;
+  const res = await fetch(url);
+  const data: any = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || 'تعذّر البحث عن المكتبات');
+  }
+  return Array.isArray(data.libraries) ? data.libraries : [];
+}
+
+export async function installArduinoLibrary(
+  name: string,
+  baseUrl: string = DEFAULT_COMPILE_URL
+): Promise<InstallLibraryResult> {
+  const clean = name.trim();
+  if (!clean) {
+    throw new Error('اسم المكتبة مطلوب');
+  }
+  const url = baseUrl.replace(/\/$/, '') + '/libraries/install';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: clean }),
+  });
+  const data: any = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || `فشل تثبيت المكتبة: ${clean}`);
+  }
+  return {
+    ok: true,
+    name: String(data.name || clean),
     logs: String(data.logs || ''),
   };
 }

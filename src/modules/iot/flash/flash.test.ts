@@ -3,7 +3,16 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Idea, PrototypeV1, caps, mergeSettings } from '../../../core';
 import { S, store } from '../../../store';
-import { canStartFlash } from './logic';
+import {
+  canStartFlash,
+  cleanFixedFirmwareCode,
+  extractMissingHeaderFromCompileError,
+} from './logic';
+import {
+  installArduinoLibrary,
+  listInstalledLibraries,
+  searchArduinoLibraries,
+} from './compiler';
 import { formatProvisioningLine } from './serial';
 import { renderFlashTab } from './ui';
 // @ts-expect-error ESM helper module without .d.ts
@@ -150,6 +159,221 @@ describe('iot flash & compile-local (S12)', () => {
     compileBtn.click();
     await vi.waitFor(() => {
       expect(flashBtn.disabled).toBe(false);
+    });
+  });
+
+  it('validates Arduino library manager helpers (names, list, top-15 search cap, missing diff)', () => {
+    expect(compileLib.validateLibraryName('DHT sensor library')).toBe('DHT sensor library');
+    expect(() => compileLib.validateLibraryName('   ')).toThrow();
+    expect(() => compileLib.validateLibraryName('--malicious-flag')).toThrow();
+
+    const installed = compileLib.parseInstalledLibrariesOutput(
+      JSON.stringify({
+        installed_libraries: [
+          { library: { name: 'ArduinoJson', version: '7.1.0', sentence: 'JSON library' } },
+          { library: { name: 'DHT sensor library', version: '1.4.6' } },
+        ],
+      })
+    );
+    expect(installed).toEqual([
+      { name: 'ArduinoJson', version: '7.1.0', sentence: 'JSON library' },
+      { name: 'DHT sensor library', version: '1.4.6', sentence: '' },
+    ]);
+
+    const manyResults = Array.from({ length: 22 }, (_, i) => ({
+      name: `SensorLib_${i}`,
+      latest: { version: '1.0.0', author: 'Dev', sentence: `Desc ${i}` },
+    }));
+    const capped = compileLib.parseLibrarySearchOutput(JSON.stringify({ libraries: manyResults }));
+    expect(capped).toHaveLength(15);
+    expect(capped[0]).toEqual({
+      name: 'SensorLib_0',
+      version: '1.0.0',
+      author: 'Dev',
+      sentence: 'Desc 0',
+    });
+
+    const missing = compileLib.findMissingLibraries(
+      ['arduinojson', 'LiquidCrystal_I2C', 'DHT sensor library', 'LiquidCrystal_I2C'],
+      installed
+    );
+    expect(missing).toEqual(['LiquidCrystal_I2C']);
+  });
+
+  it('calls compiler library HTTP endpoints and preserves stderr logs on compile errors', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/libraries')) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            libraries: [{ name: 'ArduinoJson', version: '7.1.0' }],
+          }),
+        };
+      }
+      if (url.includes('/libraries/search?q=LiquidCrystal_I2C')) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            libraries: [{ name: 'LiquidCrystal I2C', version: '1.1.2' }],
+          }),
+        };
+      }
+      if (url.endsWith('/libraries/install') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, name: 'LiquidCrystal I2C', logs: 'Installed' }),
+        };
+      }
+      return { ok: false, json: async () => ({ ok: false, error: 'unexpected' }) };
+    });
+    vi.stubGlobal('fetch', fetchMock as any);
+
+    const libs = await listInstalledLibraries();
+    expect(libs).toHaveLength(1);
+
+    const found = await searchArduinoLibraries('LiquidCrystal_I2C');
+    expect(found[0].name).toBe('LiquidCrystal I2C');
+
+    const inst = await installArduinoLibrary('LiquidCrystal I2C');
+    expect(inst.ok).toBe(true);
+  });
+
+  it('parses missing header errors, cleans AI code fences, and runs AI auto-fix + missing-lib workflow in UI', async () => {
+    expect(
+      extractMissingHeaderFromCompileError(
+        'main.ino:2:10: fatal error: LiquidCrystal_I2C.h: No such file or directory'
+      )
+    ).toEqual({ header: 'LiquidCrystal_I2C.h', query: 'LiquidCrystal_I2C' });
+
+    expect(
+      extractMissingHeaderFromCompileError(
+        "src/app.ino:4:10: 'Adafruit_BME280/Adafruit_BME280.h' file not found"
+      )
+    ).toEqual({
+      header: 'Adafruit_BME280/Adafruit_BME280.h',
+      query: 'Adafruit_BME280',
+    });
+
+    expect(extractMissingHeaderFromCompileError("error: expected ';' before '}' token")).toBeNull();
+
+    expect(cleanFixedFirmwareCode('```cpp\nvoid setup(){}\nvoid loop(){}\n```')).toBe(
+      'void setup(){}\nvoid loop(){}'
+    );
+
+    caps.webSerial = true;
+    S.settings = mergeSettings({ provider: 'openai', key: 'test-ai-fix-key', base: 'https://api.openai.com/v1' });
+
+    await store.savePrototypeRevision(SAMPLE_IDEA.id, {
+      ...SAMPLE_PROTO,
+      firmware: {
+        files: [{ name: 'main.ino', content: '#include <MissingHeader.h>\nvoid setup(){} void loop(){}' }],
+        libraries: ['DHT sensor library'],
+      },
+    });
+
+    let compileAttempts = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/libraries')) {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, libraries: [] }),
+        };
+      }
+      if (url.includes('/libraries/search?q=MissingHeader')) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            libraries: [{ name: 'MissingHeaderLib', version: '1.0.0', author: 'Test' }],
+          }),
+        };
+      }
+      if (url.endsWith('/libraries/install')) {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, name: 'MissingHeaderLib', logs: 'Installed OK' }),
+        };
+      }
+      if (url.endsWith('/compile')) {
+        compileAttempts += 1;
+        if (compileAttempts === 1) {
+          return {
+            ok: false,
+            json: async () => ({
+              ok: false,
+              error: 'compilation failed',
+              logs: 'main.ino:1:10: fatal error: MissingHeader.h: No such file or directory',
+            }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            fqbn: 'esp32:esp32:esp32',
+            bins: [{ name: 'main.ino.bin', offset: 0x10000, dataBase64: 'AQID' }],
+            logs: 'Compiled OK',
+          }),
+        };
+      }
+      if (url.includes('/chat/completions')) {
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content: '```cpp\n#include <Arduino.h>\nvoid setup(){}\nvoid loop(){}\n```',
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false, json: async () => ({ error: 'unhandled url ' + url }) };
+    });
+    vi.stubGlobal('fetch', fetchMock as any);
+
+    const tab = renderFlashTab(S.ideas[0]);
+    document.getElementById('dlg')!.appendChild(tab);
+
+    await vi.waitFor(() => {
+      expect(tab.querySelector('[data-role="lib-manager"]')).not.toBeNull();
+    });
+
+    const reviewCheck = tab.querySelector<HTMLInputElement>('[data-role="review-check"]')!;
+    reviewCheck.checked = true;
+    reviewCheck.dispatchEvent(new Event('change'));
+
+    tab.querySelector<HTMLButtonElement>('[data-action="compile-local"]')!.click();
+
+    await vi.waitFor(() => {
+      expect(tab.querySelector('[data-role="compile-diagnostics"]')).not.toBeNull();
+      expect(tab.querySelector('[data-action="search-missing-lib"]')).not.toBeNull();
+    });
+
+    tab.querySelector<HTMLButtonElement>('[data-action="search-missing-lib"]')!.click();
+    await vi.waitFor(() => {
+      expect(tab.querySelector('[data-search-lib="MissingHeaderLib"]')).not.toBeNull();
+    });
+
+    tab.querySelector<HTMLButtonElement>('[data-action="ai-auto-fix"]')!.click();
+    await vi.waitFor(() => {
+      expect(tab.querySelector('[data-action="recompile-after-fix"]')).not.toBeNull();
+    });
+
+    const updatedProto = await store.getLatestPrototype(SAMPLE_IDEA.id);
+    expect(updatedProto?.data.firmware.files[0].content).toBe(
+      '#include <Arduino.h>\nvoid setup(){}\nvoid loop(){}'
+    );
+
+    tab.querySelector<HTMLButtonElement>('[data-action="recompile-after-fix"]')!.click();
+    await vi.waitFor(() => {
+      expect(tab.querySelector<HTMLButtonElement>('[data-action="flash-usb"]')?.disabled).toBe(
+        false
+      );
     });
   });
 });
